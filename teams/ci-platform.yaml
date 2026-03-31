@@ -75,6 +75,7 @@ repositories:
       - PROD/Harness_Commons/ti-client
       - PROD/Harness_Commons/ti-agents
       - PROD/Harness_Commons/byoiBuilder
+      - PROD/CI/HCli
 
 git:
   base_branch: master

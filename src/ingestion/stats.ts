@@ -4,6 +4,11 @@ import { getDriver } from "../knowledge/graph.js";
 // Types
 // ---------------------------------------------------------------------------
 
+export interface RepoWatermark {
+  repo: string;
+  last_merged_at: string;
+}
+
 export interface IngestionStats {
   total_resolutions: number;
   by_source: { agent: number; ingested: number };
@@ -21,6 +26,7 @@ export interface IngestionStats {
     ingested_at: string;
     confidence: number;
   }[];
+  watermarks: RepoWatermark[];
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +183,24 @@ export async function getIngestionStats(params: {
       });
     }
 
+    // --- Watermarks: latest pr_merged_at per repo ---
+    const watermarkResult = await session.run(
+      `MATCH (r:Resolution)-[:HAS_PR]->(p:PR)
+       MATCH (r)-[:SCOPED_TO]->(t:Team { id: $teamId })
+       WHERE p.repo IS NOT NULL AND p.merged_at IS NOT NULL
+       RETURN p.repo AS repo, max(toString(p.merged_at)) AS last_merged_at
+       ORDER BY repo`,
+      { teamId },
+    );
+
+    const watermarks: RepoWatermark[] = [];
+    for (const record of watermarkResult.records) {
+      watermarks.push({
+        repo: record.get("repo") as string,
+        last_merged_at: record.get("last_merged_at") as string,
+      });
+    }
+
     return {
       total_resolutions: agentCount + ingestedCount,
       by_source: { agent: agentCount, ingested: ingestedCount },
@@ -185,6 +209,7 @@ export async function getIngestionStats(params: {
       top_modules: topModules,
       coverage_gaps: coverageGaps,
       recent_ingestions: recentIngestions,
+      watermarks,
     };
   } finally {
     await session.close();

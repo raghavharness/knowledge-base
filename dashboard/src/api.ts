@@ -98,7 +98,7 @@ export interface ResolutionDetail {
   }
   fix_approach: string | null
   root_cause: string | null
-  pr: {
+  prs: {
     url: string | null
     title: string | null
     repo: string | null
@@ -113,7 +113,7 @@ export interface ResolutionDetail {
     additions: number | null
     deletions: number | null
     review_decision: string | null
-  }
+  }[]
   files_changed: string[]
   modules: string[]
   similar_ids: string[]
@@ -227,6 +227,7 @@ export const api = {
   getResolutions: (params: {
     team?: string; page?: number; limit?: number;
     category?: string; tier?: string; search?: string;
+    sort?: string; order?: string;
   }) => fetchJson<ResolutionsResponse>(apiUrl('/resolutions', params as Record<string, string | number | undefined>)),
 
   getResolution: (id: string) =>

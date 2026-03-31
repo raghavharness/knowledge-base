@@ -85,7 +85,7 @@ router.get("/stats", async (req, res) => {
                r.created_at AS created_at, e.signature AS error,
                tk.ticket_id AS ticket_id, tk.summary AS summary,
                f.approach AS fix, rc.description AS root_cause
-        ORDER BY r.created_at DESC
+        ORDER BY toString(r.created_at) DESC
         LIMIT 20
         `,
         teamParam,
@@ -154,6 +154,20 @@ router.get("/resolutions", async (req, res) => {
   const tier = req.query.tier as string | undefined;
   const search = req.query.search as string | undefined;
 
+  // Sorting — whitelist allowed fields to prevent injection
+  // created_at uses toString() because some records store DateTime objects
+  // and others store strings — Neo4j sorts different types separately,
+  // so we normalize to string for consistent lexicographic comparison.
+  const allowedSortFields: Record<string, string> = {
+    created_at: "toString(r.created_at)",
+    category: "r.category",
+    tier: "r.quality_tier",
+    ticket_id: "tk.ticket_id",
+    confidence: "r.confidence",
+  };
+  const sortField = allowedSortFields[req.query.sort as string] ?? "r.created_at";
+  const sortOrder = (req.query.order as string)?.toUpperCase() === "ASC" ? "ASC" : "DESC";
+
   let where = team ? "WHERE t.id = $team" : "";
   if (category) where += (where ? " AND " : "WHERE ") + "r.category = $category";
   if (tier) where += (where ? " AND " : "WHERE ") + "r.quality_tier = toInteger($tier)";
@@ -206,7 +220,7 @@ router.get("/resolutions", async (req, res) => {
                rc.description AS root_cause, p.url AS pr_url,
                p.title AS pr_title, p.repo AS pr_repo,
                p.author AS pr_author, p.merged_at AS pr_merged_at
-        ORDER BY r.created_at DESC
+        ORDER BY ${sortField} ${sortOrder}
         SKIP $skip LIMIT $limit
         `,
         params,
@@ -281,6 +295,14 @@ router.get("/resolutions/:id", async (req, res) => {
       OPTIONAL MATCH (r)-[:CHANGED_FILE]->(file:File)
       OPTIONAL MATCH (r)-[:AFFECTS_MODULE]->(m:Module)
       OPTIONAL MATCH (r)-[:SIMILAR_TO]->(sim:Resolution)
+      WITH r, t, head(collect(DISTINCT e)) AS e, head(collect(DISTINCT tk)) AS tk,
+           head(collect(DISTINCT f)) AS f, head(collect(DISTINCT rc)) AS rc,
+           collect(DISTINCT p {.url, .title, .repo, .state, .diff_summary, .author,
+                                .reviewers, .merged_at, .pr_created_at, .description,
+                                .comments_summary, .additions, .deletions, .review_decision}) AS prs,
+           collect(DISTINCT file.path) AS files_changed,
+           collect(DISTINCT m.name) AS modules,
+           collect(DISTINCT sim.id) AS similar_ids
       RETURN r.id AS id, r.category AS category, r.quality_tier AS tier,
              r.confidence AS confidence, r.search_weight AS search_weight,
              r.created_at AS created_at, r.ingested_by AS ingested_by,
@@ -298,16 +320,10 @@ router.get("/resolutions/:id", async (req, res) => {
              tk.feature_flag AS ticket_feature_flag, tk.sprint AS ticket_sprint,
              f.approach AS fix_approach,
              rc.description AS root_cause,
-             p.url AS pr_url, p.title AS pr_title, p.repo AS pr_repo,
-             p.state AS pr_state, p.diff_summary AS pr_diff_summary,
-             p.author AS pr_author, p.reviewers AS pr_reviewers,
-             p.merged_at AS pr_merged_at, p.pr_created_at AS pr_created_at,
-             p.description AS pr_description, p.comments_summary AS pr_comments_summary,
-             p.additions AS pr_additions, p.deletions AS pr_deletions,
-             p.review_decision AS pr_review_decision,
-             collect(DISTINCT file.path) AS files_changed,
-             collect(DISTINCT m.name) AS modules,
-             collect(DISTINCT sim.id) AS similar_ids
+             prs,
+             files_changed,
+             modules,
+             similar_ids
       `,
       { id: req.params.id },
     );
@@ -318,6 +334,26 @@ router.get("/resolutions/:id", async (req, res) => {
     }
 
     const r = records[0];
+    const rawPrs = (r.get("prs") as Record<string, unknown>[] | null) ?? [];
+    const prs = rawPrs
+      .filter((p) => p.url || p.title || p.repo)
+      .map((p) => ({
+        url: p.url != null ? String(p.url) : null,
+        title: p.title != null ? String(p.title) : null,
+        repo: p.repo != null ? String(p.repo) : null,
+        state: p.state != null ? String(p.state) : null,
+        diff_summary: p.diff_summary != null ? String(p.diff_summary) : null,
+        author: p.author != null ? String(p.author) : null,
+        reviewers: (p.reviewers as string[] | null) ?? [],
+        merged_at: p.merged_at != null ? String(p.merged_at) : null,
+        created_at: p.pr_created_at != null ? String(p.pr_created_at) : null,
+        description: p.description != null ? String(p.description) : null,
+        comments_summary: p.comments_summary != null ? String(p.comments_summary) : null,
+        additions: p.additions != null ? toNum(p.additions) : null,
+        deletions: p.deletions != null ? toNum(p.deletions) : null,
+        review_decision: p.review_decision != null ? String(p.review_decision) : null,
+      }));
+
     res.json({
       id: str(r.get("id")),
       category: str(r.get("category")),
@@ -350,22 +386,7 @@ router.get("/resolutions/:id", async (req, res) => {
       },
       fix_approach: str(r.get("fix_approach")),
       root_cause: str(r.get("root_cause")),
-      pr: {
-        url: str(r.get("pr_url")),
-        title: str(r.get("pr_title")),
-        repo: str(r.get("pr_repo")),
-        state: str(r.get("pr_state")),
-        diff_summary: str(r.get("pr_diff_summary")),
-        author: str(r.get("pr_author")),
-        reviewers: (r.get("pr_reviewers") as string[] | null) ?? [],
-        merged_at: str(r.get("pr_merged_at")),
-        created_at: str(r.get("pr_created_at")),
-        description: str(r.get("pr_description")),
-        comments_summary: str(r.get("pr_comments_summary")),
-        additions: r.get("pr_additions") != null ? toNum(r.get("pr_additions")) : null,
-        deletions: r.get("pr_deletions") != null ? toNum(r.get("pr_deletions")) : null,
-        review_decision: str(r.get("pr_review_decision")),
-      },
+      prs,
       files_changed: (r.get("files_changed") as string[]).filter(Boolean),
       modules: (r.get("modules") as string[]).filter(Boolean),
       similar_ids: (r.get("similar_ids") as string[]).filter(Boolean),
@@ -426,12 +447,15 @@ router.get("/repos/:repo", async (req, res) => {
       OPTIONAL MATCH (r)-[:HAS_ERROR]->(e:Error)
       OPTIONAL MATCH (r)-[:HAS_TICKET]->(tk:Ticket)
       OPTIONAL MATCH (r)-[:CHANGED_FILE]->(f:File)
-      RETURN r.id AS id, r.category AS category, r.quality_tier AS tier,
+      WITH r, e, tk,
+           collect(DISTINCT p.title)[0] AS pr_title,
+           collect(DISTINCT p.url)[0] AS pr_url,
+           collect(DISTINCT f.path) AS files
+      RETURN DISTINCT r.id AS id, r.category AS category, r.quality_tier AS tier,
              r.created_at AS created_at, e.signature AS error,
              tk.ticket_id AS ticket_id, tk.summary AS summary,
-             p.title AS pr_title, p.url AS pr_url,
-             collect(DISTINCT f.path) AS files
-      ORDER BY r.created_at DESC
+             pr_title, pr_url, files
+      ORDER BY toString(r.created_at) DESC
       `,
       params,
     );
@@ -503,7 +527,7 @@ router.get("/patterns", async (req, res) => {
         UNWIND $patternIds AS pid
         MATCH (r:Resolution)-[:MATCHED_PATTERN]->(p:Pattern {id: pid})
         WITH pid, r
-        ORDER BY r.created_at DESC
+        ORDER BY toString(r.created_at) DESC
         WITH pid, collect(DISTINCT r)[0..10] AS resolutions
         UNWIND resolutions AS r
         OPTIONAL MATCH (r)-[:HAS_TICKET]->(tk:Ticket)
@@ -610,7 +634,7 @@ router.get("/insights", async (req, res) => {
                similar_count,
                pat.error_signature AS matched_pattern,
                r.knowledge_used AS knowledge_used
-        ORDER BY r.created_at DESC
+        ORDER BY toString(r.created_at) DESC
         SKIP $skip LIMIT $limit
         `,
         params,

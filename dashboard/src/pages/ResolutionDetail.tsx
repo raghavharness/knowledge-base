@@ -188,27 +188,29 @@ export default function ResolutionDetailPage() {
             </Paper>
           )}
 
-          {/* PR Description */}
-          {data.pr?.description && (
-            <Paper sx={{ p: 3, mb: 3, bgcolor: colors.surface }}>
-              <Section title="PR Description">
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
-                  {data.pr.description}
-                </Typography>
-              </Section>
-            </Paper>
-          )}
-
-          {/* Code Review Comments */}
-          {data.pr?.comments_summary && (
-            <Paper sx={{ p: 3, mb: 3, bgcolor: colors.surface }}>
-              <Section title="Code Review Comments">
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7, fontStyle: 'italic' }}>
-                  {data.pr.comments_summary}
-                </Typography>
-              </Section>
-            </Paper>
-          )}
+          {/* PR Descriptions & Review Comments */}
+          {data.prs?.map((pr, idx) => (
+            <React.Fragment key={idx}>
+              {pr.description && (
+                <Paper sx={{ p: 3, mb: 3, bgcolor: colors.surface }}>
+                  <Section title={data.prs.length > 1 ? `PR Description — ${pr.title || pr.repo || `#${idx + 1}`}` : 'PR Description'}>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                      {pr.description}
+                    </Typography>
+                  </Section>
+                </Paper>
+              )}
+              {pr.comments_summary && (
+                <Paper sx={{ p: 3, mb: 3, bgcolor: colors.surface }}>
+                  <Section title={data.prs.length > 1 ? `Code Review Comments — ${pr.title || pr.repo || `#${idx + 1}`}` : 'Code Review Comments'}>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7, fontStyle: 'italic' }}>
+                      {pr.comments_summary}
+                    </Typography>
+                  </Section>
+                </Paper>
+              )}
+            </React.Fragment>
+          ))}
         </Box>
 
         {/* RIGHT COLUMN: Metadata */}
@@ -248,55 +250,55 @@ export default function ResolutionDetailPage() {
             </Section>
           </Paper>
 
-          {/* PR Info — only show if there's actual PR data */}
-          {(data.pr?.url || data.pr?.title || data.pr?.repo) && (
-          <Paper sx={{ p: 3, mb: 3, bgcolor: colors.surface }}>
-            <Section title="Pull Request">
+          {/* PR Info — show all linked PRs */}
+          {data.prs?.filter(pr => pr.url || pr.title || pr.repo).map((pr, idx) => (
+          <Paper key={idx} sx={{ p: 3, mb: 3, bgcolor: colors.surface }}>
+            <Section title={data.prs.length > 1 ? `Pull Request ${idx + 1} of ${data.prs.length}` : 'Pull Request'}>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                <Row label="Repo" value={data.pr?.repo} mono />
-                <Row label="Title" value={data.pr?.title} />
-                <Row label="State" value={data.pr?.state} />
-                <Row label="Author" value={data.pr?.author} />
-                <Row label="Created" value={formatDate(data.pr?.created_at)} />
-                <Row label="Merged" value={formatDate(data.pr?.merged_at)} />
-                <Row label="Review" value={data.pr?.review_decision} />
-                {data.pr?.additions != null && data.pr?.deletions != null && (
+                <Row label="Repo" value={pr.repo} mono />
+                <Row label="Title" value={pr.title} />
+                <Row label="State" value={pr.state} />
+                <Row label="Author" value={pr.author} />
+                <Row label="Created" value={formatDate(pr.created_at)} />
+                <Row label="Merged" value={formatDate(pr.merged_at)} />
+                <Row label="Review" value={pr.review_decision} />
+                {pr.additions != null && pr.deletions != null && (
                   <Row label="Changes" value={
                     <span>
-                      <span style={{ color: colors.green }}>+{data.pr.additions}</span>{' / '}
-                      <span style={{ color: colors.red }}>-{data.pr.deletions}</span>
+                      <span style={{ color: colors.green }}>+{pr.additions}</span>{' / '}
+                      <span style={{ color: colors.red }}>-{pr.deletions}</span>
                     </span>
                   } />
                 )}
-                {data.pr?.url && (
+                {pr.url && (
                   <Row label="Link" value={
-                    <Link href={data.pr.url} target="_blank" sx={{ color: colors.purple, fontSize: '0.85rem' }}>
+                    <Link href={pr.url} target="_blank" sx={{ color: colors.purple, fontSize: '0.85rem' }}>
                       View PR
                     </Link>
                   } />
                 )}
               </Box>
-              {data.pr?.reviewers && data.pr.reviewers.length > 0 && (
+              {pr.reviewers && pr.reviewers.length > 0 && (
                 <Box sx={{ mt: 1.5 }}>
                   <Typography variant="caption" sx={{ color: colors.text2 }}>Reviewers</Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
-                    {data.pr.reviewers.map((r, i) => (
+                    {pr.reviewers.map((r, i) => (
                       <Chip key={i} label={r} size="small" sx={{ bgcolor: `${colors.pink}18`, color: colors.pink, fontSize: '0.7rem', height: 22, border: `1px solid ${colors.pink}30` }} />
                     ))}
                   </Box>
                 </Box>
               )}
-              {data.pr?.diff_summary && (
+              {pr.diff_summary && (
                 <Box sx={{ mt: 1.5 }}>
                   <Typography variant="caption" sx={{ color: colors.text2 }}>Diff Summary</Typography>
                   <Typography variant="body2" sx={{ mt: 0.5, fontSize: '0.8rem', lineHeight: 1.6 }}>
-                    {data.pr.diff_summary}
+                    {pr.diff_summary}
                   </Typography>
                 </Box>
               )}
             </Section>
           </Paper>
-          )}
+          ))}
 
           {/* Files Changed */}
           {data.files_changed && data.files_changed.length > 0 && (

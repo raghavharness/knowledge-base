@@ -165,8 +165,8 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     );
   }
 
-  // Create PR + Repo nodes if provided
-  if (input.pr_url) {
+  // Create PR + Repo nodes if provided (validate URL is an actual PR, not a JIRA link)
+  if (input.pr_url && isValidPrUrl(input.pr_url)) {
     await runWrite(
       `
       MERGE (pr:PR {url: $prUrl})
@@ -247,6 +247,18 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     patterns_updated: patternsUpdated,
     similar_resolutions_linked: similarCount,
   };
+}
+
+/**
+ * Validate that a URL is an actual PR link (GitHub or Harness Code), not a
+ * JIRA link, Confluence page, or other non-PR URL.
+ */
+function isValidPrUrl(url: string): boolean {
+  // GitHub PR: https://github.com/owner/repo/pull/123
+  if (/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(url)) return true;
+  // Harness Code PR: .../repos/REPO/pulls/123 or .../repos/REPO/pullreq/123
+  if (/\/repos\/[^/]+\/pull(?:s|req)\/\d+/.test(url)) return true;
+  return false;
 }
 
 function categorizeRootCause(rootCause: string): string {

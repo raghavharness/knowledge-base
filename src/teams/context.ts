@@ -4,6 +4,7 @@ import yaml from "js-yaml";
 import { searchSimilar, type SearchResult } from "../knowledge/search.js";
 import { getPatterns } from "../knowledge/patterns.js";
 import { runQuery } from "../knowledge/graph.js";
+import type { RepoWatermark } from "../ingestion/stats.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,6 +78,7 @@ export interface ShipContext {
   similar_resolutions: SearchResult[];
   patterns: { description: string; occurrences: number; success_rate: number; typical_fix: string }[];
   investigation_hints: string[];
+  ingestion_watermarks?: RepoWatermark[];
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +209,29 @@ export async function getContext(params: {
     ...proceduralHints,
   ];
 
+  // Fetch ingestion watermarks (latest pr_merged_at per repo)
+  let ingestionWatermarks: RepoWatermark[] | undefined;
+  try {
+    const wmRecords = await runQuery(
+      `MATCH (r:Resolution)-[:HAS_PR]->(p:PR)
+       MATCH (r)-[:SCOPED_TO]->(t:Team { id: $teamId })
+       WHERE p.repo IS NOT NULL AND p.merged_at IS NOT NULL
+       RETURN p.repo AS repo, max(toString(p.merged_at)) AS last_merged_at
+       ORDER BY repo`,
+      { teamId },
+    );
+    if (wmRecords.length > 0) {
+      ingestionWatermarks = wmRecords.map((rec) => ({
+        repo: rec.get("repo") as string,
+        last_merged_at: rec.get("last_merged_at") as string,
+      }));
+    }
+  } catch {
+    // Non-fatal — watermarks are optional
+  }
+
   return {
+    ingestion_watermarks: ingestionWatermarks ?? [],
     team_config: teamConfig,
     similar_resolutions: similarResolutions,
     patterns,

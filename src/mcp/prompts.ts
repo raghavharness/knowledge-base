@@ -1,5 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { runQuery } from "../knowledge/graph.js";
+import { verifyToken, extractFromHeader } from "../auth/jwt.js";
 
 // ---------------------------------------------------------------------------
 // Prompt registration
@@ -54,28 +56,96 @@ export function registerPrompts(server: McpServer) {
   // ─── Prompt 3: ship_ingest_jira ─────────────────────────────────────
   server.prompt(
     "ship_ingest_jira",
-    "Ingest the last N merged PRs (default 100) from each team repo into the Ship knowledge graph. Automatically discovers repos from team config.",
+    "Ingest the last N merged PRs (default 100) from specific repos (or all team repos) into the Ship knowledge graph. Pass repos as full git URLs or repo paths.",
     {
+      repos: z.string().optional().describe("Comma-separated repos to ingest. Accepts full git URLs (https://git0.harness.io/.../PROD/CI/HCli.git) or short paths (PROD/CI/HCli, owner/repo). If omitted, processes all repos from team config."),
+      pr_count: z.string().optional().describe("Max number of merged PRs to fetch per repo (default: 100). Only PRs newer than the last ingested PR are fetched unless force is set."),
       token: z.string().optional().describe("JWT from ship_register. If not provided, read from ~/.ship/token"),
-      pr_count: z.string().optional().describe("Number of merged PRs to fetch per repo (default: 100)"),
-      repos: z.string().optional().describe("Comma-separated list of repos to ingest (e.g. 'PROD/Harness_Commons/runner,harness/harness-core'). If provided, only these repos are processed instead of all repos from team config. GitHub repos use owner/repo format. Harness Code repos use the path from team config."),
+      force: z.string().optional().describe("Set to 'true' to ignore watermarks and re-ingest all PRs up to pr_count"),
     },
-    async ({ token, pr_count, repos }) => {
+    async ({ repos, pr_count, token, force }) => {
       const count = pr_count ? parseInt(pr_count, 10) || 100 : 100;
-      const repoList = repos ? repos.split(",").map((r) => r.trim()).filter(Boolean) : undefined;
+      const forceFlag = force === "true";
+      const repoList = repos
+        ? repos.split(",").map((r) => normalizeRepoInput(r.trim())).filter(Boolean)
+        : undefined;
+
+      // Query watermarks at prompt build time so they're baked into the prompt text
+      let watermarks = new Map<string, string>();
+      if (!forceFlag) {
+        try {
+          let teamId: string | undefined;
+          if (token) {
+            const raw = extractFromHeader(token);
+            const payload = verifyToken(raw);
+            teamId = payload.teams[0];
+          }
+          // If no token provided, query watermarks across all teams
+          // (the prompt instructs the LLM to read token from ~/.ship/token later)
+          watermarks = await getWatermarks(teamId);
+        } catch {
+          // If token is bad or query fails, proceed without watermarks
+        }
+      }
+
       return {
         messages: [
           {
             role: "user" as const,
             content: {
               type: "text" as const,
-              text: buildIngestPrompt(token, count, repoList),
+              text: buildIngestPrompt(token, count, repoList, forceFlag, watermarks),
             },
           },
         ],
       };
     }
   );
+}
+
+// ---------------------------------------------------------------------------
+// Watermark lookup — query Neo4j for last ingested PR date per repo
+// ---------------------------------------------------------------------------
+async function getWatermarks(teamId?: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const query = teamId
+      ? `MATCH (r:Resolution)-[:HAS_PR]->(p:PR)
+         MATCH (r)-[:SCOPED_TO]->(t:Team { id: $teamId })
+         WHERE p.repo IS NOT NULL AND p.merged_at IS NOT NULL
+         RETURN p.repo AS repo, max(toString(p.merged_at)) AS last_merged_at`
+      : `MATCH (r:Resolution)-[:HAS_PR]->(p:PR)
+         WHERE p.repo IS NOT NULL AND p.merged_at IS NOT NULL
+         RETURN p.repo AS repo, max(toString(p.merged_at)) AS last_merged_at`;
+    const records = await runQuery(query, { teamId: teamId ?? null });
+    for (const rec of records) {
+      map.set(rec.get("repo") as string, rec.get("last_merged_at") as string);
+    }
+  } catch {
+    // Non-fatal
+  }
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+// Normalize repo input — strips git URLs to repo paths
+// ---------------------------------------------------------------------------
+function normalizeRepoInput(input: string): string {
+  let repo = input;
+  // Strip .git suffix
+  repo = repo.replace(/\.git$/, "");
+  // Strip known Harness Code base URLs to extract the repo path
+  // e.g. https://git0.harness.io/l7B_kbSEQD2wjrM7PShm5w/PROD/CI/HCli -> PROD/CI/HCli
+  const harnessMatch = repo.match(/https?:\/\/git\d*\.harness\.io\/[^/]+\/(.+)/);
+  if (harnessMatch) {
+    return harnessMatch[1];
+  }
+  // Strip GitHub URLs: https://github.com/owner/repo -> owner/repo
+  const githubMatch = repo.match(/https?:\/\/github\.com\/(.+)/);
+  if (githubMatch) {
+    return githubMatch[1];
+  }
+  return repo;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +222,25 @@ Detect input type:
    mcp__ship__ship_blackboard(token: "${tokenRef}", session_id: "<generated_uuid>", phase: "bootstrap", input: "${input ?? ""}")
    \`\`\`
 
-4. **Fast path:** If any \`similar_resolutions\` entry has \`confidence > 0.85\`:
+4. **Ensure a JIRA ticket exists (MANDATORY before any code changes):**
+   - If the input IS a JIRA ticket ID: use it.
+   - If the input is a PR, log URL, or description that references a JIRA ticket: extract the ticket ID.
+   - **If NO JIRA ticket is associated with this work:** Create one BEFORE making any code changes:
+     \`\`\`
+     mcp__atlassian__createJiraIssue(
+       cloudId: "<from team_config.tracker.jira.cloud_id>",
+       projectKey: "<from team_config.tracker.jira.default_project>",
+       issueTypeName: "Story",
+       summary: "<concise title for the work>",
+       description: "<what is being done and why>"
+     )
+     \`\`\`
+     - Default issue type is **Story** unless the user explicitly says otherwise (e.g., "bug", "task").
+     - **Assign to the current user** by default. Use \`mcp__atlassian__atlassianUserInfo()\` to get your Atlassian account ID, then pass it as \`additional_fields: {"assignee": {"accountId": "<your_account_id>"}}\` when creating the ticket. Only skip self-assignment if the user explicitly names a different assignee.
+     - If the create call fails due to missing required fields (like \`components\`), fetch the field metadata, find valid values, and retry.
+   - Save the ticket ID — it is needed for branch names, commit messages, and PR titles.
+
+5. **Fast path:** If any \`similar_resolutions\` entry has \`confidence > 0.85\`:
    - Present the similar resolution to the user (one line)
    - Verify the hypothesis applies (check file existence, error reproduction)
    - If verified: apply the similar fix pattern, skip to Phase 2 validation
@@ -267,25 +355,34 @@ mcp__ship__ship_blackboard(token: "${tokenRef}", session_id: "<session_id>", pha
 
 ## Phase 3: Branch, Commit, PR
 
+**You MUST have a JIRA ticket ID before this phase.** If you don't, go back to Phase 0 step 4 and create one.
+
 ### Git Operations
 
-1. **Branch:** Create branch using format from \`team_config.git.branch_format\`:
-   - Example: \`{author}/{ticket_id}-{short_description}\`
-   - Default: \`ship/{ticket_id}-fix\`
+1. **Branch:** Use the JIRA ticket ID as the branch name:
+   - Format: \`{ticket_id}\` (e.g., \`CI-21831\`)
+   - This keeps branch names consistent with the team's \`branch_format\` config.
+   - **Do NOT use descriptive branch names** like \`update-qa-linux-amd-g2-gpu-machines\`. Always use the ticket ID.
 
-2. **Commit:** Format message per \`team_config.git.commit_format\`:
-   - Example: \`{type}({scope}): {description} [{ticket_id}]\`
-   - Default: \`fix: <description> [<ticket_id>]\`
+2. **Commit:** Format message as \`{type}: [{ticket_id}]: {description}\`:
+   - Example: \`feat: [CI-21831]: update QA linux amd64 machine types to g2-standard\`
+   - Example: \`fix: [CI-21042]: handle nil pointer in stage executor\`
+   - The type is \`fix\` for bugfixes, \`feat\` for features/stories/tasks.
+   - **The \`[TICKET_ID]:\` part is mandatory** — CI checks (messageCheck) validate this format. Getting it wrong means CI failure and wasted time.
 
 3. **Push:** \`git push -u origin <branch_name>\`
 
 4. **Create PR:**
+   - **PR title MUST match this format: \`{type}: [{ticket_id}]: {description}\`**
+     - Example: \`feat: [CI-21831]: update QA linux amd64 machine types to g2-standard (L4 GPU)\`
+     - Example: \`fix: [CI-21042]: handle nil pointer in stage executor\`
+     - This is **critical** — CI checks like \`messageCheck\` validate the PR title format. If the title doesn't include \`[TICKET_ID]:\`, CI will fail.
    - Use section structure from \`team_config.git.pr_sections\`
    - Default sections: Summary, Root Cause, Changes, Testing, Ticket
 
    For GitHub repos:
    \`\`\`bash
-   gh pr create --title "<title>" --body "<body>"
+   gh pr create --title "{type}: [{ticket_id}]: {description}" --body "<body>"
    \`\`\`
    Or: \`mcp__github__create_pull_request(owner, repo, title, body, head, base)\`
 
@@ -388,9 +485,11 @@ mcp__ship__ship_blackboard(token: "${tokenRef}", session_id: "<session_id>", pha
 
 **ALWAYS do this. Never skip this phase. This is how Ship learns.**
 
+**CRITICAL — \`ticket_id\` MUST be a valid JIRA ticket ID (e.g., CI-21831).** Do NOT record a resolution without a JIRA ticket. If no ticket exists yet, create one first (see Phase 0 step 4). Never use UUIDs, descriptions, or placeholder strings as the ticket_id.
+
 Even if:
-- The investigation was simple or obvious — **record it.**
-- No code changes were made (analysis-only) — **record it** with \`resolution_type: "knowledge_gap"\`.
+- The investigation was simple or obvious — **record it** (but with a JIRA ticket).
+- No code changes were made (analysis-only) — **record it** with \`resolution_type: "knowledge_gap"\` (still needs a JIRA ticket).
 - The \`ship_record\` call fails — **log the failure and inform the user**, but always attempt the call.
 
 \`\`\`
@@ -403,7 +502,7 @@ mcp__ship__ship_record(
   effective_step: "<the_step_that_identified_root_cause>",
   fix_approach: "<what_was_changed_and_why>",
   files_changed: [{"path": "<path>", "summary": "<what_changed>"}],
-  ticket_id: "<JIRA_or_GitHub_issue_id>",
+  ticket_id: "<JIRA_ticket_id — MANDATORY, e.g. CI-21831>",
   pr_url: "<pull_request_url>",
   pr_repo: "<repository_name>",
   ci_attempts: <number_of_ci_fix_cycles>,
@@ -670,7 +769,7 @@ Now proceed. Start with Step 1: Get Context from Ship Knowledge.`;
 // ---------------------------------------------------------------------------
 // Prompt 3: ship_ingest_jira — Bulk Ingestion
 // ---------------------------------------------------------------------------
-function buildIngestPrompt(token?: string, prCount: number = 100, repos?: string[]): string {
+function buildIngestPrompt(token?: string, prCount: number = 100, repos?: string[], force: boolean = false, watermarks: Map<string, string> = new Map()): string {
   const tokenRef = token ?? '<token_from_~/.ship/token>';
   const repoOverrideSection = repos ? `
 **REPO OVERRIDE: Only process these specific repositories:**
@@ -686,28 +785,68 @@ To determine the repo type:
 **IMPORTANT**: The ingestion MUST only process repositories defined in the team config. Do NOT fetch PRs from repos outside the team config.
 `;
 
+  const tokenInstruction = token
+    ? `Use this token for all Ship MCP calls: \`${token}\``
+    : `**Read your Ship token from \`~/.ship/token\`.** If the file doesn't exist, call \`mcp__atlassian__atlassianUserInfo()\` to get your identity, then call \`mcp__ship__ship_register\` to get a token, and save it to \`~/.ship/token\`.`;
+
+  // Build per-repo watermark instructions baked directly into the prompt
+  let watermarkSection = "";
+  if (!force && watermarks.size > 0) {
+    const lines: string[] = [];
+    for (const [repo, lastMerged] of watermarks) {
+      lines.push(`- **\`${repo}\`**: last ingested PR merged at \`${lastMerged}\` — **ONLY fetch PRs merged AFTER this date**`);
+    }
+    watermarkSection = `
+## ⚠️ INCREMENTAL INGESTION — READ THIS FIRST
+
+The following repos already have ingested PRs. **Do NOT re-fetch PRs that are already in the knowledge graph.**
+
+${lines.join("\n")}
+
+**For any repo NOT listed above:** this is a first-time ingestion — fetch the last ${prCount} PRs.
+
+**How to apply:** When you list merged PRs (Step 2), check each PR's merge date against the cutoff above. **STOP fetching as soon as you hit a PR whose merge date is older than or equal to the cutoff.** For Harness Code PRs, the \`merged\` field is a Unix timestamp in milliseconds — convert to compare.
+
+`;
+  } else if (!force) {
+    watermarkSection = `
+**Note:** No previously ingested PRs found for any repo — this is a first-time ingestion. Fetch up to ${prCount} PRs per repo.
+
+`;
+  } else {
+    watermarkSection = `
+**FORCE MODE:** Ignoring watermarks. Fetching up to ${prCount} PRs per repo regardless of prior ingestion.
+
+`;
+  }
+
   return `You are a data-ingestion agent for the Ship knowledge graph. Your job is to automatically fetch recent PRs from ${repos ? "the specified repositories" : "all team repositories"}, extract linked JIRA tickets, build the **richest possible** structured records, and ingest them via \`mcp__ship__ship_ingest\`.
 
 **No manual input is needed.** You discover everything from the team config.
-${repoOverrideSection}
+
+**Authentication:** ${tokenInstruction}
+${watermarkSection}${repoOverrideSection}
 ---
 
 ## Step 1: Get Team Context
 
-Call \`mcp__ship__ship_context\` with token \`${token}\` to get the team configuration. The response includes:
+Call \`mcp__ship__ship_context\` with token \`${tokenRef}\` to get the team configuration. The response includes:
 
-- **\`team_config.tracker.jira.default_project\`**: The team's JIRA project key (e.g. "CI"). Only process PRs whose JIRA ID matches this project.
-- **\`team_config.repositories.github\`**: Array of \`{owner, repo}\` pairs.${repos ? "" : " A repo value of \\`\"*\"\\` means all repos under that owner."}
-- **\`team_config.repositories.harness_code\`**: Object with \`base_url\` and \`repos\` array.
-- **\`team_config.ci.providers\`**: Contains PR URL formats needed for Harness Code repos.
+- **\`team_config.tracker.jira.default_project\`**: JIRA project key (e.g. "CI")
+- **\`team_config.repositories\`**: GitHub and Harness Code repos
+- **\`team_config.ci.providers\`**: PR URL formats for Harness Code repos
 
 ${repos ? "**Use the team config only for JIRA project, PR URL formats, and settings — NOT for the repo list.** Process only the repos specified above." : ""}
 
 ---
 
-## Step 2: Fetch Last ${prCount} Merged PRs Per Repo
+## Step 2: Fetch Merged PRs Per Repo
 
-For each repository ${repos ? "listed above" : "**defined in the team config** (and ONLY those)"}, fetch the **last ${prCount} merged PRs**, sorted by **merge date descending** (most recent first):
+For each repository ${repos ? "listed above" : "**defined in the team config** (and ONLY those)"}:
+
+${!force && watermarks.size > 0 ? `**Apply the watermark cutoffs from above.** Fetch merged PRs sorted by merge date descending. STOP as soon as you hit a PR older than the repo's cutoff date. Cap at ${prCount} new PRs per repo.
+
+For repos with no watermark listed above, fetch the last ${prCount} merged PRs.` : `Fetch the **last ${prCount} merged PRs**, sorted by **merge date descending** (most recent first).`}
 
 ### GitHub repos
 For each \`{owner, repo}\` in \`repositories.github\`:
@@ -755,12 +894,14 @@ If you need more than 100 results, paginate (\`page: 1\`, etc.) until you reach 
 
 **To get full PR details**, call \`mcp__harness0__harness_get\`:
 
+**IMPORTANT:** The pull_request resource type requires \`pr_number\` (NOT \`resource_id\`). Pass it inside the \`params\` object.
+
 For **account-level repos**:
 \`\`\`json
 {
   "resource_type": "pull_request",
   "repo_id": "harness-pl-infra",
-  "resource_id": "<pr_number>"
+  "params": { "pr_number": "<pr_number>" }
 }
 \`\`\`
 
@@ -771,7 +912,7 @@ For **space-level repos**:
   "repo_id": "runner",
   "org_id": "PROD",
   "project_id": "Harness_Commons",
-  "resource_id": "<pr_number>"
+  "params": { "pr_number": "<pr_number>" }
 }
 \`\`\`
 
@@ -913,7 +1054,7 @@ Infer from file paths:
 
 ## Step 6: Call ship_ingest
 
-Batch records (up to 20 per call) and call \`mcp__ship__ship_ingest\` with token \`${token}\`.
+Batch records (up to 20 per call) and call \`mcp__ship__ship_ingest\` with token \`${tokenRef}\`.
 
 Each record must include ALL gathered fields:
 \`\`\`json
@@ -972,8 +1113,8 @@ Each record must include ALL gathered fields:
 
 After ingestion completes, report:
 - Total PRs scanned per repo
-- PRs skipped (no JIRA ID, wrong project, fetch errors)
-- Records successfully ingested
+- PRs skipped (no JIRA ID, wrong project, fetch errors, older than watermark)
+- Records successfully ingested (new vs updated)
 - Breakdown by category (bugfix/feature/refactor/config_change)
 - Average extraction confidence
 - Any errors encountered
@@ -993,7 +1134,8 @@ After ingestion completes, report:
 - **Always set \`pr_url\` and \`pr_repo\`** — resolutions without these fields will NOT appear in the dashboard's repos view. For Harness Code repos, construct the URL from \`pr_url_format\` in team config.
 - **Rich details for ALL categories** — features, stories, and refactors need equally rich \`root_cause\`, \`fix_approach\`, \`ticket_description\`, and \`pr_description\`. The knowledge base serves PMs and engineers who need full context about every change.
 - **For bugfixes, always extract \`error_signature\`, \`root_cause\`, and \`fix_approach\`** — these power the patterns system. Without all 3, no pattern is created.
-- **Upsert, not duplicate**: The server automatically upserts — if a ticket or PR was already ingested, sending it again updates the existing record with the latest data. Do NOT skip records you think might already exist; always send them.
+- **Watermark filtering**: Unless force mode is active, always check watermarks (Step 2) and skip PRs older than the watermark. This prevents redundant processing and speeds up incremental ingestions.
+- **Upsert, not duplicate**: The server automatically upserts — if a ticket or PR was already ingested, sending it again updates the existing record with the latest data. If a PR is newer than the watermark, always send it even if you suspect it might exist.
 - **Deduplicate on your side**: if the same JIRA ticket appears in PRs from multiple repos, keep all PR links but create only one ingestion record per unique ticket+PR pair.
 - **Maximize detail**: Every field you can extract adds value. The dashboard is used by PMs who need to understand what happened, who was involved, and why decisions were made.
 

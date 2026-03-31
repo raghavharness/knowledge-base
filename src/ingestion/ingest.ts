@@ -79,6 +79,16 @@ async function loadTeamConfig(
 }
 
 /**
+ * Validate that a URL is an actual PR link (GitHub or Harness Code), not a
+ * JIRA link, Confluence page, or other non-PR URL.
+ */
+function isValidPrUrl(url: string): boolean {
+  if (/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(url)) return true;
+  if (/\/repos\/[^/]+\/pull(?:s|req)\/\d+/.test(url)) return true;
+  return false;
+}
+
+/**
  * Upsert the Resolution node and all related nodes/relationships.
  * Uses MERGE for the Resolution so re-ingestion updates rather than duplicates.
  * Deletes old Error/RootCause/Fix/File/Module relationships before recreating.
@@ -260,7 +270,8 @@ async function upsertResolutionGraph(
       }
 
       // PR node (MERGE on url, MERGE relationship)
-      if (record.pr_url) {
+      // Only create PR nodes for actual PR URLs (GitHub/Harness Code), not JIRA/Confluence links
+      if (record.pr_url && isValidPrUrl(record.pr_url)) {
         await tx.run(
           `MATCH (r:Resolution { id: $resId })
            MERGE (p:PR { url: $prUrl })

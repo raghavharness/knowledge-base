@@ -37,8 +37,9 @@ export default function ResolutionsPage() {
     () => api.getResolutions({
       team, page: page + 1, limit: rowsPerPage,
       category, tier, search: debouncedSearch,
+      sort: sortBy, order: sortOrder,
     }),
-    [team, page, rowsPerPage, category, tier, debouncedSearch],
+    [team, page, rowsPerPage, category, tier, debouncedSearch, sortBy, sortOrder],
   )
 
   const handleSort = (field: string) => {

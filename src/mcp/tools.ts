@@ -29,14 +29,26 @@ interface AuthContext {
 }
 
 function authenticate(token: string): AuthContext {
-  const raw = extractFromHeader(token);
-  const payload = verifyToken(raw);
-  return {
-    userId: payload.sub,
-    email: payload.email,
-    teams: payload.teams,
-    primaryTeam: payload.teams[0],
-  };
+  try {
+    const raw = extractFromHeader(token);
+    const payload = verifyToken(raw);
+    return {
+      userId: payload.sub,
+      email: payload.email,
+      teams: payload.teams,
+      primaryTeam: payload.teams[0],
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("malformed") || message.includes("invalid")) {
+      throw new Error(
+        `Invalid token: "${token.slice(0, 20)}..." is not a valid JWT. ` +
+        `Read the token from ~/.ship/token file (cat ~/.ship/token). ` +
+        `If the file doesn't exist, call ship_register first to get a token and save it there.`
+      );
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +96,7 @@ export function registerTools(server: McpServer) {
     "ship_context",
     "Get team config + similar past resolutions + investigation hints. Call this at the START of every /ship run.",
     {
-      token: z.string().describe("JWT from ship_register (X-Ship-Token)"),
+      token: z.string().describe("JWT token — read from ~/.ship/token file. Do NOT pass user input, URLs, or descriptions here."),
       input: z.string().optional().describe("Ticket ID, PR URL, GCP log URL, description, or empty"),
       error_text: z.string().optional().describe("Extracted error text for better similarity search"),
     },
@@ -123,7 +135,7 @@ export function registerTools(server: McpServer) {
     "ship_search",
     "Search knowledge graph for similar resolutions. Use mid-investigation when you need more context or hit a dead end.",
     {
-      token: z.string().describe("JWT token"),
+      token: z.string().describe("JWT token — read from ~/.ship/token file. Do NOT pass user input, URLs, or descriptions here."),
       query: z.string().describe("Search query — error message, file path, module name, or description"),
       strategy: z
         .enum(["semantic", "by_file", "by_module", "by_error_type", "fulltext"])
@@ -180,7 +192,7 @@ export function registerTools(server: McpServer) {
     "ship_record",
     "Record a completed resolution. ALWAYS call this after investigating any issue — whether it was a code bug, knowledge gap, config issue, or expected behavior. The server embeds, stores, and learns from it. IMPORTANT: Always try to include both JIRA ticket details (ticket_id) AND PR details (pr_url, pr_repo). If a PR was created, these fields are critical for linking the resolution to the repository. However, if no PR exists yet (e.g. still investigating), you may proceed without PR details.",
     {
-      token: z.string().describe("JWT token"),
+      token: z.string().describe("JWT token — read from ~/.ship/token file. Do NOT pass user input, URLs, or descriptions here."),
       resolution_type: z
         .enum(["code_fix", "config_change", "knowledge_gap", "expected_behavior", "documentation", "environment"])
         .describe("What kind of resolution this was. Use 'knowledge_gap' when the issue was a misunderstanding, 'expected_behavior' when the system was working correctly, 'documentation' when docs needed updating, 'environment' for infra/setup issues."),
@@ -241,7 +253,7 @@ export function registerTools(server: McpServer) {
     "ship_feedback",
     "Report the outcome of a resolution. Helps the system learn which fixes actually work.",
     {
-      token: z.string().describe("JWT token"),
+      token: z.string().describe("JWT token — read from ~/.ship/token file. Do NOT pass user input, URLs, or descriptions here."),
       resolution_id: z.string().describe("Resolution ID from ship_record"),
       outcome: z
         .enum(["confirmed_resolved", "partial", "reverted", "promote_global"])
@@ -273,7 +285,7 @@ export function registerTools(server: McpServer) {
     "ship_blackboard",
     "Persistent working memory per session. Survives context window compression. Also enables resuming interrupted /ship runs.",
     {
-      token: z.string().describe("JWT token"),
+      token: z.string().describe("JWT token — read from ~/.ship/token file. Do NOT pass user input, URLs, or descriptions here."),
       session_id: z.string().describe("Unique session ID for this /ship invocation"),
       input: z.string().optional().describe("Original input (set on first call)"),
       phase: z
@@ -329,7 +341,7 @@ export function registerTools(server: McpServer) {
     "ship_ingest",
     "Ingest pre-processed historical data (JIRA tickets and/or PRs) into the knowledge graph. The LLM extracts structured data client-side, sends it here for storage.",
     {
-      token: z.string().describe("JWT token"),
+      token: z.string().describe("JWT token — read from ~/.ship/token file. Do NOT pass user input, URLs, or descriptions here."),
       records: z
         .array(
           z.object({
@@ -414,7 +426,7 @@ export function registerTools(server: McpServer) {
     "ship_ingest_status",
     "Check ingestion statistics for a team. Shows knowledge coverage, quality distribution, and gaps.",
     {
-      token: z.string().describe("JWT token"),
+      token: z.string().describe("JWT token — read from ~/.ship/token file. Do NOT pass user input, URLs, or descriptions here."),
       team_id: z.string().optional().describe("Team ID. Default: caller's primary team"),
       since: z.string().optional().describe("ISO date filter. Default: all time"),
     },
