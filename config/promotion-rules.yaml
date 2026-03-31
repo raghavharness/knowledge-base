@@ -1,0 +1,15 @@
+promotion:
+  auto_promote:
+    min_status: "confirmed_resolved"
+    shared_code_prefixes:
+      - "commons/"
+      - "platform/"
+      - "utils/"
+      - "shared/"
+      - "pkg/common/"
+    min_cross_team_occurrences: 2
+    min_success_rate: 0.8
+  manual_promote:
+    allowed_roles:
+      - "team_lead"
+      - "admin"

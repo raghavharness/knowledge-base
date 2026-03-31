@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ship Knowledge Graph</title>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --surface2: #22222e;
+      --border: #2a2a3a;
+      --text: #e8e8f0;
+      --text2: #8888a0;
+      --purple: #7c6cf0;
+      --purple-dim: rgba(124,108,240,0.15);
+      --red: #e06050;
+      --red-dim: rgba(224,96,80,0.15);
+      --green: #40c090;
+      --green-dim: rgba(64,192,144,0.15);
+      --blue: #4090e0;
+      --blue-dim: rgba(64,144,224,0.15);
+      --yellow: #e0c050;
+      --yellow-dim: rgba(224,192,80,0.15);
+      --cyan: #40c8e0;
+      --cyan-dim: rgba(64,200,224,0.15);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--purple);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sidebar-header h1 .material-icons { font-size: 22px; }
+
+    .sidebar-header p {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 4px;
+    }
+
+    .nav-items {
+      padding: 12px 8px;
+      flex: 1;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--text2);
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s;
+      margin-bottom: 2px;
+    }
+
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: var(--purple-dim); color: var(--purple); }
+    .nav-item .material-icons { font-size: 20px; }
+
+    /* Main content */
+    .main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px;
+    }
+
+    .page { display: none; }
+    .page.active { display: block; }
+
+    .page-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .page-subtitle {
+      font-size: 13px;
+      color: var(--text2);
+      margin-bottom: 24px;
+    }
+
+    /* KPI Cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+
+    .kpi-card.purple::before { background: var(--purple); }
+    .kpi-card.green::before { background: var(--green); }
+    .kpi-card.red::before { background: var(--red); }
+    .kpi-card.blue::before { background: var(--blue); }
+    .kpi-card.yellow::before { background: var(--yellow); }
+    .kpi-card.cyan::before { background: var(--cyan); }
+
+    .kpi-value {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .kpi-card.purple .kpi-value { color: var(--purple); }
+    .kpi-card.green .kpi-value { color: var(--green); }
+    .kpi-card.red .kpi-value { color: var(--red); }
+    .kpi-card.blue .kpi-value { color: var(--blue); }
+    .kpi-card.yellow .kpi-value { color: var(--yellow); }
+    .kpi-card.cyan .kpi-value { color: var(--cyan); }
+
+    .kpi-label {
+      font-size: 11px;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 6px;
+      font-weight: 600;
+    }
+
+    .kpi-icon {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 36px;
+      opacity: 0.08;
+    }
+
+    /* Section panels */
+    .panel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    .panel-full { grid-column: 1 / -1; }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .panel-title .material-icons { font-size: 16px; }
+
+    /* Tables */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .data-table th {
+      text-align: left;
+      padding: 8px 10px;
+      color: var(--text2);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .data-table td {
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: var(--surface2); }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .badge-bugfix { background: var(--red-dim); color: var(--red); }
+    .badge-feature { background: var(--blue-dim); color: var(--blue); }
+    .badge-refactor { background: var(--yellow-dim); color: var(--yellow); }
+    .badge-config_change { background: var(--cyan-dim); color: var(--cyan); }
+    .badge-tier1 { background: var(--green-dim); color: var(--green); }
+    .badge-tier2 { background: var(--yellow-dim); color: var(--yellow); }
+    .badge-tier3 { background: var(--red-dim); color: var(--red); }
+
+    /* Bar chart (CSS-only) */
+    .bar-chart { display: flex; flex-direction: column; gap: 8px; }
+
+    .bar-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .bar-label {
+      font-size: 12px;
+      color: var(--text2);
+      min-width: 90px;
+      text-align: right;
+    }
+
+    .bar-track {
+      flex: 1;
+      height: 22px;
+      background: var(--surface2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      padding-left: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: white;
+      min-width: 30px;
+      transition: width 0.6s ease;
+    }
+
+    /* Graph page */
+    .graph-container {
+      display: flex;
+      gap: 16px;
+      height: calc(100vh - 140px);
+    }
+
+    .graph-view {
+      flex: 2;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .graph-toolbar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      display: flex;
+      gap: 6px;
+      z-index: 10;
+    }
+
+    .graph-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .graph-btn:hover { background: var(--border); color: var(--text); }
+    .graph-btn .material-icons { font-size: 16px; }
+
+    .graph-legend {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      display: flex;
+      gap: 12px;
+      z-index: 10;
+      font-size: 11px;
+      color: var(--text2);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .detail-panel {
+      flex: 1;
+      min-width: 280px;
+      max-width: 340px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      overflow-y: auto;
+    }
+
+    .detail-panel h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: var(--text2);
+    }
+
+    .detail-field {
+      margin-bottom: 12px;
+    }
+
+    .detail-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text2);
+      margin-bottom: 3px;
+    }
+
+    .detail-value {
+      font-size: 13px;
+      color: var(--text);
+      word-break: break-word;
+    }
+
+    .detail-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text2);
+      text-align: center;
+      gap: 8px;
+    }
+
+    .detail-placeholder .material-icons { font-size: 40px; opacity: 0.3; }
+
+    /* Pattern cards */
+    .pattern-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 12px;
+    }
+
+    .pattern-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .pattern-signature {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--red);
+      font-family: 'JetBrains Mono', monospace;
+      word-break: break-word;
+      flex: 1;
+    }
+
+    .pattern-stats {
+      display: flex;
+      gap: 12px;
+      flex-shrink: 0;
+      margin-left: 12px;
+    }
+
+    .pattern-stat {
+      text-align: center;
+    }
+
+    .pattern-stat-value {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .pattern-stat-label {
+      font-size: 10px;
+      color: var(--text2);
+      text-transform: uppercase;
+    }
+
+    .pattern-detail {
+      font-size: 12px;
+      color: var(--text2);
+      margin-top: 6px;
+    }
+
+    .pattern-detail strong { color: var(--text); }
+
+    .pattern-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 8px;
+    }
+
+    .file-tag {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 11px;
+      color: var(--yellow);
+      font-family: monospace;
+    }
+
+    /* Module cards */
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .module-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    .module-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--blue);
+      margin-bottom: 8px;
+    }
+
+    .module-meta {
+      font-size: 12px;
+      color: var(--text2);
+    }
+
+    .module-count {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      margin-top: 8px;
+    }
+
+    .module-count-label {
+      font-size: 11px;
+      color: var(--text2);
+    }
+
+    /* Timeline */
+    .timeline-chart {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      min-height: 300px;
+    }
+
+    /* Loading & empty states */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+      color: var(--text2);
+      gap: 8px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text2);
+    }
+
+    .empty-state .material-icons { font-size: 48px; opacity: 0.2; margin-bottom: 8px; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 1s linear infinite; }
+
+    /* SVG graph styles */
+    .graph-view svg { width: 100%; height: 100%; }
+    .node-label { font-size: 10px; fill: var(--text); pointer-events: none; font-family: 'Inter', sans-serif; }
+    .edge-label { font-size: 8px; fill: var(--text2); font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1><span class="material-icons">hub</span> Ship</h1>
+      <p>Knowledge Graph Dashboard</p>
+    </div>
+    <nav class="nav-items">
+      <div class="nav-item active" data-page="overview">
+        <span class="material-icons">dashboard</span> Overview
+      </div>
+      <div class="nav-item" data-page="graph">
+        <span class="material-icons">account_tree</span> Graph
+      </div>
+      <div class="nav-item" data-page="patterns">
+        <span class="material-icons">pattern</span> Patterns
+      </div>
+      <div class="nav-item" data-page="modules">
+        <span class="material-icons">view_module</span> Modules
+      </div>
+      <div class="nav-item" data-page="timeline">
+        <span class="material-icons">timeline</span> Timeline
+      </div>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <!-- Overview Page -->
+    <div class="page active" id="page-overview">
+      <div class="page-title">Overview</div>
+      <div class="page-subtitle">Knowledge graph summary and recent activity</div>
+      <div class="kpi-grid" id="kpi-grid"></div>
+      <div class="panel-grid">
+        <div class="panel">
+          <div class="panel-title"><span class="material-icons">pie_chart</span> Category Breakdown</div>
+          <div class="bar-chart" id="category-chart"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title"><span class="material-icons">grade</span> Quality Tiers</div>
+          <div class="bar-chart" id="tier-chart"></div>
+        </div>
+        <div class="panel panel-full">
+          <div class="panel-title"><span class="material-icons">history</span> Recent Resolutions</div>
+          <table class="data-table" id="recent-table">
+            <thead>
+              <tr>
+                <th>Ticket</th>
+                <th>Summary</th>
+                <th>Category</th>
+                <th>Tier</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Graph Page -->
+    <div class="page" id="page-graph">
+      <div class="page-title">Knowledge Graph</div>
+      <div class="page-subtitle">Interactive visualization of entities and relationships</div>
+      <div class="graph-container">
+        <div class="graph-view" id="graph-view">
+          <div class="graph-toolbar">
+            <button class="graph-btn" onclick="resetZoom()"><span class="material-icons">fit_screen</span> Reset</button>
+            <button class="graph-btn" onclick="toggleLabels()"><span class="material-icons">label</span> Labels</button>
+          </div>
+          <div class="graph-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div> Resolution</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Error</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Pattern</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--blue)"></div> Module</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> File</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div> Team</div>
+          </div>
+        </div>
+        <div class="detail-panel" id="detail-panel">
+          <div class="detail-placeholder">
+            <span class="material-icons">touch_app</span>
+            <div>Click a node to see details</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Patterns Page -->
+    <div class="page" id="page-patterns">
+      <div class="page-title">Patterns</div>
+      <div class="page-subtitle">Recurring error patterns detected across resolutions</div>
+      <div id="patterns-list"></div>
+    </div>
+
+    <!-- Modules Page -->
+    <div class="page" id="page-modules">
+      <div class="page-title">Modules</div>
+      <div class="page-subtitle">Code modules and their resolution activity</div>
+      <div class="module-grid" id="modules-grid"></div>
+    </div>
+
+    <!-- Timeline Page -->
+    <div class="page" id="page-timeline">
+      <div class="page-title">Timeline</div>
+      <div class="page-subtitle">Ingestion activity over time</div>
+      <div class="timeline-chart" id="timeline-chart"></div>
+    </div>
+  </main>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    // ── State ──
+    let graphData = null;
+    let simulation = null;
+    let labelsVisible = true;
+
+    const NODE_COLORS = {
+      Resolution: '#7c6cf0', Error: '#e06050', Pattern: '#40c090',
+      Module: '#4090e0', File: '#e0c050', Team: '#40c8e0',
+      Ticket: '#a070d0', RootCause: '#e08060', Fix: '#50d0a0', PR: '#d070a0',
+    };
+
+    const NODE_RADIUS = {
+      Resolution: 14, Error: 10, Pattern: 12, Module: 11,
+      File: 7, Team: 16, Ticket: 9, RootCause: 8, Fix: 8, PR: 9,
+    };
+
+    // ── Navigation ──
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        item.classList.add('active');
+        const page = document.getElementById('page-' + item.dataset.page);
+        page.classList.add('active');
+        if (item.dataset.page === 'graph' && !graphData) loadGraph();
+        if (item.dataset.page === 'patterns') loadPatterns();
+        if (item.dataset.page === 'modules') loadModules();
+        if (item.dataset.page === 'timeline') loadTimeline();
+      });
+    });
+
+    // ── API helpers ──
+    async function api(path) {
+      const res = await fetch('/api/' + path);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+
+    function truncate(str, len = 60) {
+      if (!str) return '—';
+      return str.length > len ? str.slice(0, len) + '...' : str;
+    }
+
+    // ── Overview ──
+    async function loadOverview() {
+      try {
+        const data = await api('stats');
+        renderKPIs(data.counts);
+        renderCategoryChart(data.categories);
+        renderTierChart(data.tiers);
+        renderRecentTable(data.recent);
+      } catch (e) {
+        console.error('Failed to load overview:', e);
+      }
+    }
+
+    function renderKPIs(counts) {
+      const items = [
+        { key: 'resolutions', label: 'Resolutions', color: 'purple', icon: 'check_circle' },
+        { key: 'patterns', label: 'Patterns', color: 'green', icon: 'pattern' },
+        { key: 'errors', label: 'Errors', color: 'red', icon: 'error' },
+        { key: 'modules', label: 'Modules', color: 'blue', icon: 'view_module' },
+        { key: 'files', label: 'Files', color: 'yellow', icon: 'insert_drive_file' },
+        { key: 'teams', label: 'Teams', color: 'cyan', icon: 'group' },
+      ];
+
+      const grid = document.getElementById('kpi-grid');
+      grid.innerHTML = items.map(i => {
+        const val = typeof counts[i.key] === 'object' && counts[i.key]?.low !== undefined
+          ? counts[i.key].low : counts[i.key];
+        return `
+          <div class="kpi-card ${i.color}">
+            <div class="kpi-value">${val ?? 0}</div>
+            <div class="kpi-label">${i.label}</div>
+            <span class="material-icons kpi-icon">${i.icon}</span>
+          </div>`;
+      }).join('');
+    }
+
+    function renderCategoryChart(categories) {
+      const el = document.getElementById('category-chart');
+      if (!categories.length) { el.innerHTML = '<div class="empty-state">No data</div>'; return; }
+      const max = Math.max(...categories.map(c => c.count));
+      const colors = { bugfix: 'var(--red)', feature: 'var(--blue)', refactor: 'var(--yellow)', config_change: 'var(--cyan)' };
+      el.innerHTML = categories.map(c => `
+        <div class="bar-row">
+          <div class="bar-label">${c.category}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${(c.count/max)*100}%;background:${colors[c.category]||'var(--purple)'}">
+              ${c.count}
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    function renderTierChart(tiers) {
+      const el = document.getElementById('tier-chart');
+      if (!tiers.length) { el.innerHTML = '<div class="empty-state">No data</div>'; return; }
+      const max = Math.max(...tiers.map(t => t.count));
+      const colors = { 1: 'var(--green)', 2: 'var(--yellow)', 3: 'var(--red)' };
+      const labels = { 1: 'Tier 1 (High)', 2: 'Tier 2 (Medium)', 3: 'Tier 3 (Low)' };
+      el.innerHTML = tiers.map(t => `
+        <div class="bar-row">
+          <div class="bar-label">${labels[t.tier] || 'Tier ' + t.tier}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${(t.count/max)*100}%;background:${colors[t.tier]||'var(--purple)'}">
+              ${t.count}
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    function renderRecentTable(recent) {
+      const tbody = document.querySelector('#recent-table tbody');
+      if (!recent.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No resolutions yet</td></tr>';
+        return;
+      }
+      tbody.innerHTML = recent.map(r => `
+        <tr>
+          <td>${r.ticket_id || '—'}</td>
+          <td>${truncate(r.summary || r.error || r.id, 50)}</td>
+          <td><span class="badge badge-${r.category}">${r.category || '—'}</span></td>
+          <td><span class="badge badge-tier${r.tier}">${r.tier ? 'Tier ' + r.tier : '—'}</span></td>
+        </tr>`).join('');
+    }
+
+    // ── Graph ──
+    async function loadGraph() {
+      const container = document.getElementById('graph-view');
+      const existingSvg = container.querySelector('svg');
+      if (existingSvg) existingSvg.remove();
+
+      try {
+        graphData = await api('graph');
+        renderGraph(graphData);
+      } catch (e) {
+        console.error('Failed to load graph:', e);
+      }
+    }
+
+    function renderGraph(data) {
+      const container = document.getElementById('graph-view');
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      const svg = d3.select(container).append('svg')
+        .attr('width', width).attr('height', height);
+
+      const g = svg.append('g');
+
+      // Zoom
+      const zoom = d3.zoom()
+        .scaleExtent([0.1, 4])
+        .on('zoom', (e) => g.attr('transform', e.transform));
+      svg.call(zoom);
+
+      window._graphZoom = zoom;
+      window._graphSvg = svg;
+
+      // Build lookup for edges
+      const nodeById = new Map(data.nodes.map(n => [n.id, n]));
+
+      // Filter edges to only those with valid source/target
+      const validEdges = data.edges.filter(e => nodeById.has(e.source) && nodeById.has(e.target));
+
+      // Hierarchical layout: assign y layers
+      const layerOrder = ['Team', 'Module', 'Pattern', 'Resolution', 'Ticket', 'PR', 'Error', 'RootCause', 'Fix', 'File'];
+      const layerY = {};
+      layerOrder.forEach((l, i) => { layerY[l] = 80 + i * ((height - 120) / layerOrder.length); });
+
+      data.nodes.forEach(n => {
+        n.fx = null;
+        n.y = layerY[n.label] || height / 2;
+      });
+
+      simulation = d3.forceSimulation(data.nodes)
+        .force('link', d3.forceLink(validEdges).id(d => d.id).distance(60).strength(0.3))
+        .force('charge', d3.forceManyBody().strength(-120))
+        .force('x', d3.forceX(width / 2).strength(0.05))
+        .force('y', d3.forceY(d => layerY[d.label] || height / 2).strength(0.4))
+        .force('collision', d3.forceCollide(d => (NODE_RADIUS[d.label] || 8) + 4));
+
+      // Layer labels
+      const layerLabels = g.append('g').selectAll('text')
+        .data(layerOrder.filter(l => data.nodes.some(n => n.label === l)))
+        .join('text')
+        .attr('x', 14)
+        .attr('y', d => layerY[d])
+        .attr('fill', 'rgba(136,136,160,0.4)')
+        .attr('font-size', '10px')
+        .attr('font-family', 'Inter, sans-serif')
+        .attr('font-weight', '600')
+        .text(d => d.toUpperCase());
+
+      // Edges
+      const link = g.append('g')
+        .selectAll('line')
+        .data(validEdges)
+        .join('line')
+        .attr('stroke', 'rgba(255,255,255,0.08)')
+        .attr('stroke-width', 1);
+
+      // Edge labels
+      const edgeLabel = g.append('g')
+        .selectAll('text')
+        .data(validEdges)
+        .join('text')
+        .attr('class', 'edge-label')
+        .attr('text-anchor', 'middle')
+        .attr('dy', -4)
+        .text(d => d.type);
+
+      // Nodes
+      const node = g.append('g')
+        .selectAll('circle')
+        .data(data.nodes)
+        .join('circle')
+        .attr('r', d => NODE_RADIUS[d.label] || 8)
+        .attr('fill', d => NODE_COLORS[d.label] || '#888')
+        .attr('stroke', 'rgba(0,0,0,0.3)')
+        .attr('stroke-width', 1.5)
+        .attr('cursor', 'pointer')
+        .on('click', (e, d) => showNodeDetail(d))
+        .call(d3.drag()
+          .on('start', (e, d) => {
+            if (!e.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x; d.fy = d.y;
+          })
+          .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+          .on('end', (e, d) => {
+            if (!e.active) simulation.alphaTarget(0);
+            d.fx = null; d.fy = null;
+          })
+        );
+
+      // Node labels
+      const label = g.append('g')
+        .selectAll('text')
+        .data(data.nodes)
+        .join('text')
+        .attr('class', 'node-label')
+        .attr('text-anchor', 'middle')
+        .attr('dy', d => (NODE_RADIUS[d.label] || 8) + 12)
+        .text(d => truncate(d.name, 20));
+
+      window._graphLabels = label;
+
+      simulation.on('tick', () => {
+        link
+          .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+        edgeLabel
+          .attr('x', d => (d.source.x + d.target.x) / 2)
+          .attr('y', d => (d.source.y + d.target.y) / 2);
+        node.attr('cx', d => d.x).attr('cy', d => d.y);
+        label.attr('x', d => d.x).attr('y', d => d.y);
+        layerLabels.attr('y', d => layerY[d]);
+      });
+    }
+
+    function showNodeDetail(node) {
+      const panel = document.getElementById('detail-panel');
+      const color = NODE_COLORS[node.label] || '#888';
+
+      let propsHtml = '';
+      if (node.props) {
+        const skipKeys = new Set(['embedding', 'id']);
+        for (const [key, val] of Object.entries(node.props)) {
+          if (skipKeys.has(key) || val === null || val === undefined) continue;
+          let display = val;
+          if (typeof val === 'object') display = JSON.stringify(val);
+          if (typeof display === 'string' && display.length > 200) display = display.slice(0, 200) + '...';
+          propsHtml += `
+            <div class="detail-field">
+              <div class="detail-label">${key.replace(/_/g, ' ')}</div>
+              <div class="detail-value">${display}</div>
+            </div>`;
+        }
+      }
+
+      panel.innerHTML = `
+        <h3 style="color:${color}">${node.label}</h3>
+        <div class="detail-field">
+          <div class="detail-label">Name / ID</div>
+          <div class="detail-value" style="font-weight:600">${node.name}</div>
+        </div>
+        ${propsHtml}
+      `;
+    }
+
+    function resetZoom() {
+      if (window._graphSvg && window._graphZoom) {
+        window._graphSvg.transition().duration(500)
+          .call(window._graphZoom.transform, d3.zoomIdentity);
+      }
+    }
+
+    function toggleLabels() {
+      labelsVisible = !labelsVisible;
+      if (window._graphLabels) {
+        window._graphLabels.attr('visibility', labelsVisible ? 'visible' : 'hidden');
+      }
+    }
+
+    // ── Patterns ──
+    async function loadPatterns() {
+      const el = document.getElementById('patterns-list');
+      try {
+        const patterns = await api('patterns');
+        if (!patterns.length) {
+          el.innerHTML = '<div class="empty-state"><span class="material-icons">pattern</span><div>No patterns detected yet</div></div>';
+          return;
+        }
+        el.innerHTML = patterns.map(p => {
+          const rate = p.success_rate != null ? Math.round(p.success_rate * 100) : '—';
+          const rateColor = rate >= 80 ? 'var(--green)' : rate >= 50 ? 'var(--yellow)' : 'var(--red)';
+          return `
+            <div class="pattern-card">
+              <div class="pattern-header">
+                <div class="pattern-signature">${truncate(p.error_signature, 120)}</div>
+                <div class="pattern-stats">
+                  <div class="pattern-stat">
+                    <div class="pattern-stat-value" style="color:var(--purple)">${p.occurrences ?? 0}</div>
+                    <div class="pattern-stat-label">Occurrences</div>
+                  </div>
+                  <div class="pattern-stat">
+                    <div class="pattern-stat-value" style="color:${rateColor}">${rate}%</div>
+                    <div class="pattern-stat-label">Success</div>
+                  </div>
+                </div>
+              </div>
+              <div class="pattern-detail"><strong>Root cause:</strong> ${truncate(p.root_cause, 150)}</div>
+              <div class="pattern-detail"><strong>Fix:</strong> ${truncate(p.fix_approach, 150)}</div>
+              ${p.files.length ? `<div class="pattern-files">${p.files.map(f => `<span class="file-tag">${f}</span>`).join('')}</div>` : ''}
+            </div>`;
+        }).join('');
+      } catch (e) {
+        el.innerHTML = '<div class="empty-state">Failed to load patterns</div>';
+      }
+    }
+
+    // ── Modules ──
+    async function loadModules() {
+      const el = document.getElementById('modules-grid');
+      try {
+        const modules = await api('modules');
+        if (!modules.length) {
+          el.innerHTML = '<div class="empty-state"><span class="material-icons">view_module</span><div>No modules found</div></div>';
+          return;
+        }
+        el.innerHTML = modules.map(m => `
+          <div class="module-card">
+            <div class="module-name">${m.name || '(unnamed)'}</div>
+            <div class="module-meta">${m.teams?.filter(Boolean).join(', ') || 'No team assigned'}</div>
+            <div class="module-count">${m.resolution_count}</div>
+            <div class="module-count-label">resolutions</div>
+          </div>`).join('');
+      } catch (e) {
+        el.innerHTML = '<div class="empty-state">Failed to load modules</div>';
+      }
+    }
+
+    // ── Timeline ──
+    async function loadTimeline() {
+      const el = document.getElementById('timeline-chart');
+      try {
+        const data = await api('timeline');
+        if (!data.length) {
+          el.innerHTML = '<div class="empty-state"><span class="material-icons">timeline</span><div>No timeline data yet</div></div>';
+          return;
+        }
+
+        // Aggregate by date
+        const byDate = {};
+        data.forEach(d => {
+          if (!byDate[d.date]) byDate[d.date] = { total: 0, bugfix: 0, feature: 0, refactor: 0, config_change: 0 };
+          byDate[d.date].total += d.count;
+          if (d.category && byDate[d.date][d.category] !== undefined) {
+            byDate[d.date][d.category] += d.count;
+          }
+        });
+
+        const dates = Object.keys(byDate).sort();
+        const maxCount = Math.max(...dates.map(d => byDate[d].total));
+
+        el.innerHTML = `
+          <div class="panel-title"><span class="material-icons">bar_chart</span> Daily Ingestion Activity</div>
+          <div style="display:flex;align-items:flex-end;gap:4px;height:220px;padding-top:20px;">
+            ${dates.map(d => {
+              const day = byDate[d];
+              const h = Math.max((day.total / maxCount) * 180, 4);
+              const bugH = (day.bugfix / day.total) * h;
+              const featH = (day.feature / day.total) * h;
+              const refH = (day.refactor / day.total) * h;
+              const confH = h - bugH - featH - refH;
+              return `
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;" title="${d}: ${day.total} resolutions">
+                  <div style="width:100%;display:flex;flex-direction:column-reverse;gap:1px;">
+                    ${bugH > 0 ? `<div style="height:${bugH}px;background:var(--red);border-radius:2px;min-height:1px;"></div>` : ''}
+                    ${featH > 0 ? `<div style="height:${featH}px;background:var(--blue);border-radius:2px;min-height:1px;"></div>` : ''}
+                    ${refH > 0 ? `<div style="height:${refH}px;background:var(--yellow);border-radius:2px;min-height:1px;"></div>` : ''}
+                    ${confH > 0 ? `<div style="height:${confH}px;background:var(--cyan);border-radius:2px;min-height:1px;"></div>` : ''}
+                  </div>
+                  <div style="font-size:8px;color:var(--text2);transform:rotate(-45deg);white-space:nowrap;margin-top:4px;">${d.slice(5)}</div>
+                </div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;gap:16px;margin-top:12px;font-size:11px;color:var(--text2);">
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:10px;background:var(--red);border-radius:2px;"></div> Bugfix</div>
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:10px;background:var(--blue);border-radius:2px;"></div> Feature</div>
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:10px;background:var(--yellow);border-radius:2px;"></div> Refactor</div>
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:10px;background:var(--cyan);border-radius:2px;"></div> Config</div>
+          </div>`;
+      } catch (e) {
+        el.innerHTML = '<div class="empty-state">Failed to load timeline</div>';
+      }
+    }
+
+    // ── Init ──
+    loadOverview();
+  </script>
+</body>
+</html>

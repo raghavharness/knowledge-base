@@ -1,0 +1,138 @@
+team:
+  id: ci-platform
+  name: "CI Platform"
+
+tracker:
+  provider: jira
+  jira:
+    cloud_id: "harness.atlassian.net"
+    default_project: "CI"
+    default_issue_type: "Story"
+    statuses:
+      start_work: "In Progress"
+      review: "In Review"
+    custom_fields:
+      severity:
+        id: "customfield_12847"
+        default_value_id: "17014"
+      found_in:
+        id: "customfield_10632"
+      ff_added:
+        id: "customfield_10785"
+        values:
+          "yes": "10910"
+          "no": "10911"
+      bug_resolution:
+        id: "customfield_10687"
+      release_notes:
+        id: "customfield_10719"
+      resolved_as:
+        id: "customfield_10709"
+        values:
+          real_bug: "10383"
+          not_a_bug: "10387"
+
+ci:
+  max_fix_attempts: 3
+  providers:
+    - name: github-actions
+      detect_by: "github.com"
+      pr_tool: gh
+    - name: harness0
+      detect_by: "harness0.harness.io"
+      mcp_prefix: "mcp__harness0__"
+      default_org_id: ""
+      default_project_id: ""
+      gcp_bucket: "gs://harness-zero-harness0-1391-log-service/"
+      log_path_format: "{accountId}/accountId:{accountId}/orgId:{orgId}/projectId:{projectId}/pipelineId:{pipelineId}/runSequence:{runSequence}/level0:pipeline/level1:stages/level2:{stageId}/level3:spec/level4:execution/level5:steps/level6:{stepId}"
+      pr_url_format: "https://harness0.harness.io/ng/account/l7B_kbSEQD2wjrM7PShm5w/module/code/repos/{repo_id}/pulls/{pr_number}/conversation"
+      pr_url_format_with_scope: "https://harness0.harness.io/ng/account/l7B_kbSEQD2wjrM7PShm5w/module/code/orgs/{org}/projects/{project}/repos/{repo}/pulls/{pr_number}/conversation"
+    - name: harness-prod
+      detect_by: "app.harness.io"
+      mcp_prefix: "mcp__harness__"
+      gcp_bucket: "gs://free-log-service/"
+      log_path_format: "{accountId}/{accountId}/pipeline/{pipelineId}/{runSequence}/-{executionId}/{stageIdentifier}/{stepIdentifier}"
+
+repositories:
+  github:
+    - owner: drone-runners
+      repo: drone-runner-aws
+    - owner: drone-plugins
+      repo: "*"
+  harness_code:
+    base_url: "https://git0.harness.io/l7B_kbSEQD2wjrM7PShm5w"
+    repos:
+      # harness-pl-infra: account-level repo, not accessible via harness0 MCP token (permissions)
+      - PROD/Harness_Commons/harness-core
+      - PROD/Harness_Commons/developer-hub
+      - PROD/Harness_Commons/runner
+      - PROD/Harness_Commons/harness-docker-runner
+      - PROD/Harness_Commons/harness-cache
+      - PROD/Harness_Commons/harness-ti
+      - PROD/Harness_Commons/virtual-environments
+      - PROD/Harness_Commons/lite-engine
+      - PROD/Harness_Commons/dlite
+      - PROD/Harness_Commons/ti-client
+      - PROD/Harness_Commons/ti-agents
+      - PROD/Harness_Commons/byoiBuilder
+
+git:
+  base_branch: master
+  branch_format: "{ticket_id}"
+  commit_format: "{type}:[{ticket_id}]: {description}"
+  pr_sections:
+    - Problem
+    - Root Cause
+    - Solution
+    - Changes Made
+    - Testing
+    - Related Issues/Logs
+
+build:
+  auto_detect: true
+
+code_style:
+  language: Go
+  test_approach: "table-driven tests with testify"
+  review_checklist:
+    - "nil checks after DB/API calls"
+    - "error wrapping with context"
+    - "metric labels match conventions"
+
+issue_patterns:
+  - pattern: "runtime error: invalid memory address"
+    typical_root_cause: "nil check missing after DB query"
+    typical_fix_area:
+      - "pipeline/"
+      - "handler/"
+  - pattern: "context deadline exceeded"
+    typical_root_cause: "timeout too low or downstream service slow"
+    typical_fix_area:
+      - "client/"
+      - "config/"
+
+modules:
+  - name: pipeline
+    path_prefixes:
+      - "pipeline/"
+      - "pkg/pipeline/"
+  - name: stage-executor
+    path_prefixes:
+      - "pipeline/stage/"
+      - "pkg/stage/"
+  - name: trigger
+    path_prefixes:
+      - "trigger/"
+      - "pkg/trigger/"
+  - name: delegate
+    path_prefixes:
+      - "delegate/"
+      - "pkg/delegate/"
+  - name: commons-cache
+    path_prefixes:
+      - "commons/cache/"
+    shared: true
+  - name: ci-manager
+    path_prefixes:
+      - "ci-manager/"
+      - "cmd/ci-manager/"

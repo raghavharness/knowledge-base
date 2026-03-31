@@ -1,0 +1,137 @@
+<h2>Graph Visualization Style</h2>
+<p class="subtitle">The Graph page is the centerpiece. How should nodes and relationships be rendered?</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0d1117;border-radius:8px;padding:24px;min-height:180px;position:relative;overflow:hidden;">
+        <!-- Force-directed graph mockup -->
+        <svg viewBox="0 0 400 180" style="width:100%;height:180px;">
+          <!-- Edges -->
+          <line x1="200" y1="90" x2="100" y2="40" stroke="#444" stroke-width="1"/>
+          <line x1="200" y1="90" x2="300" y2="50" stroke="#444" stroke-width="1"/>
+          <line x1="200" y1="90" x2="140" y2="150" stroke="#444" stroke-width="1"/>
+          <line x1="200" y1="90" x2="280" y2="140" stroke="#444" stroke-width="1"/>
+          <line x1="100" y1="40" x2="60" y2="90" stroke="#333" stroke-width="1"/>
+          <line x1="300" y1="50" x2="350" y2="100" stroke="#333" stroke-width="1"/>
+          <line x1="140" y1="150" x2="60" y2="90" stroke="#333" stroke-width="1"/>
+          <line x1="280" y1="140" x2="350" y2="100" stroke="#333" stroke-width="1"/>
+          <!-- Resolution (center, large) -->
+          <circle cx="200" cy="90" r="22" fill="#6c5ce7" opacity="0.9"/>
+          <text x="200" y="94" text-anchor="middle" fill="white" font-size="8" font-family="monospace">Resolution</text>
+          <!-- Error nodes -->
+          <circle cx="100" cy="40" r="14" fill="#e17055" opacity="0.9"/>
+          <text x="100" y="43" text-anchor="middle" fill="white" font-size="7" font-family="monospace">Error</text>
+          <circle cx="300" cy="50" r="14" fill="#e17055" opacity="0.9"/>
+          <text x="300" y="53" text-anchor="middle" fill="white" font-size="7" font-family="monospace">Error</text>
+          <!-- Pattern nodes -->
+          <circle cx="140" cy="150" r="16" fill="#00b894" opacity="0.9"/>
+          <text x="140" y="153" text-anchor="middle" fill="white" font-size="7" font-family="monospace">Pattern</text>
+          <!-- Module nodes -->
+          <circle cx="280" cy="140" r="12" fill="#0984e3" opacity="0.9"/>
+          <text x="280" y="143" text-anchor="middle" fill="white" font-size="7" font-family="monospace">Module</text>
+          <!-- File nodes (small) -->
+          <circle cx="60" cy="90" r="8" fill="#fdcb6e" opacity="0.8"/>
+          <circle cx="350" cy="100" r="8" fill="#fdcb6e" opacity="0.8"/>
+        </svg>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A: Force-Directed Graph</h3>
+      <p>Nodes float and self-organize by connections. Color-coded by type (Resolution=purple, Error=red, Pattern=green, Module=blue, File=yellow). Drag to explore, click to inspect. Classic knowledge graph look.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0d1117;border-radius:8px;padding:24px;min-height:180px;">
+        <svg viewBox="0 0 400 180" style="width:100%;height:180px;">
+          <!-- Hierarchical layers -->
+          <text x="10" y="15" fill="#555" font-size="8" font-family="monospace">TEAM</text>
+          <text x="10" y="55" fill="#555" font-size="8" font-family="monospace">MODULE</text>
+          <text x="10" y="100" fill="#555" font-size="8" font-family="monospace">RESOLUTION</text>
+          <text x="10" y="145" fill="#555" font-size="8" font-family="monospace">ERROR/FIX</text>
+          <line x1="0" y1="25" x2="400" y2="25" stroke="#222" stroke-width="1" stroke-dasharray="4"/>
+          <line x1="0" y1="70" x2="400" y2="70" stroke="#222" stroke-width="1" stroke-dasharray="4"/>
+          <line x1="0" y1="115" x2="400" y2="115" stroke="#222" stroke-width="1" stroke-dasharray="4"/>
+          <!-- Team -->
+          <rect x="170" y="5" width="80" height="16" rx="4" fill="#6c5ce7"/>
+          <text x="210" y="16" text-anchor="middle" fill="white" font-size="8" font-family="monospace">CI Platform</text>
+          <!-- Modules -->
+          <rect x="80" y="40" width="70" height="16" rx="4" fill="#0984e3"/>
+          <text x="115" y="51" text-anchor="middle" fill="white" font-size="7" font-family="monospace">pipeline</text>
+          <rect x="180" y="40" width="70" height="16" rx="4" fill="#0984e3"/>
+          <text x="215" y="51" text-anchor="middle" fill="white" font-size="7" font-family="monospace">knowledge</text>
+          <rect x="280" y="40" width="70" height="16" rx="4" fill="#0984e3"/>
+          <text x="315" y="51" text-anchor="middle" fill="white" font-size="7" font-family="monospace">trigger</text>
+          <!-- Edges down -->
+          <line x1="210" y1="21" x2="115" y2="40" stroke="#444" stroke-width="1"/>
+          <line x1="210" y1="21" x2="215" y2="40" stroke="#444" stroke-width="1"/>
+          <line x1="210" y1="21" x2="315" y2="40" stroke="#444" stroke-width="1"/>
+          <!-- Resolutions -->
+          <rect x="70" y="85" width="50" height="14" rx="3" fill="#a29bfe"/>
+          <rect x="140" y="85" width="50" height="14" rx="3" fill="#a29bfe"/>
+          <rect x="210" y="85" width="50" height="14" rx="3" fill="#a29bfe"/>
+          <rect x="290" y="85" width="50" height="14" rx="3" fill="#a29bfe"/>
+          <line x1="115" y1="56" x2="95" y2="85" stroke="#333" stroke-width="1"/>
+          <line x1="115" y1="56" x2="165" y2="85" stroke="#333" stroke-width="1"/>
+          <line x1="215" y1="56" x2="235" y2="85" stroke="#333" stroke-width="1"/>
+          <line x1="315" y1="56" x2="315" y2="85" stroke="#333" stroke-width="1"/>
+          <!-- Errors -->
+          <circle cx="95" cy="140" r="8" fill="#e17055"/>
+          <circle cx="165" cy="140" r="8" fill="#e17055"/>
+          <circle cx="235" cy="135" r="8" fill="#00b894"/>
+          <circle cx="315" cy="140" r="8" fill="#e17055"/>
+          <line x1="95" y1="99" x2="95" y2="132" stroke="#333" stroke-width="1"/>
+          <line x1="165" y1="99" x2="165" y2="132" stroke="#333" stroke-width="1"/>
+          <line x1="235" y1="99" x2="235" y2="127" stroke="#333" stroke-width="1"/>
+          <line x1="315" y1="99" x2="315" y2="132" stroke="#333" stroke-width="1"/>
+        </svg>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B: Hierarchical / Layered</h3>
+      <p>Organized in layers: Team → Modules → Resolutions → Errors/Fixes. Shows the ownership hierarchy clearly. Good for understanding structure, less organic.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#0d1117;border-radius:8px;padding:24px;min-height:180px;">
+        <div style="display:flex;gap:12px;height:170px;">
+          <!-- Left: graph -->
+          <div style="flex:2;position:relative;">
+            <svg viewBox="0 0 250 170" style="width:100%;height:170px;">
+              <line x1="125" y1="85" x2="60" y2="35" stroke="#444" stroke-width="1"/>
+              <line x1="125" y1="85" x2="200" y2="40" stroke="#444" stroke-width="1"/>
+              <line x1="125" y1="85" x2="80" y2="140" stroke="#444" stroke-width="1"/>
+              <line x1="125" y1="85" x2="190" y2="130" stroke="#444" stroke-width="1"/>
+              <circle cx="125" cy="85" r="18" fill="#6c5ce7" opacity="0.9" stroke="#8b7ff0" stroke-width="2"/>
+              <text x="125" y="88" text-anchor="middle" fill="white" font-size="7" font-family="monospace">Res</text>
+              <circle cx="60" cy="35" r="12" fill="#e17055" opacity="0.9"/>
+              <circle cx="200" cy="40" r="10" fill="#00b894" opacity="0.9"/>
+              <circle cx="80" cy="140" r="10" fill="#0984e3" opacity="0.9"/>
+              <circle cx="190" cy="130" r="8" fill="#fdcb6e" opacity="0.9"/>
+            </svg>
+          </div>
+          <!-- Right: detail panel -->
+          <div style="flex:1;background:#16213e;border-radius:6px;padding:10px;font-size:9px;color:#ccc;font-family:monospace;">
+            <div style="color:#6c5ce7;font-weight:bold;margin-bottom:6px;">Resolution</div>
+            <div style="color:#888;margin-bottom:2px;">ID: res-a1b2c3</div>
+            <div style="color:#888;margin-bottom:2px;">Category: bugfix</div>
+            <div style="color:#888;margin-bottom:2px;">Quality: Tier 1</div>
+            <div style="border-top:1px solid #333;margin:8px 0;"></div>
+            <div style="color:#e17055;font-size:8px;margin-bottom:2px;">ERROR</div>
+            <div style="color:#aaa;font-size:8px;margin-bottom:6px;">pattern_embedding_index not found</div>
+            <div style="color:#00b894;font-size:8px;margin-bottom:2px;">PATTERN</div>
+            <div style="color:#aaa;font-size:8px;">index name mismatch (12x)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C: Graph + Detail Panel</h3>
+      <p>Force-directed graph on the left, click any node to see its full details in a right panel. Best of both worlds — visual exploration with full context on demand.</p>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,6 @@
+team_mappings:
+  - jira_project: "CI"
+    team_id: "ci-platform"
+  # Add new teams here as they onboard:
+  # - jira_project: "CD"
+  #   team_id: "cd-platform"
