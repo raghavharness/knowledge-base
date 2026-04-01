@@ -49,8 +49,12 @@ export interface RecordResult {
 }
 
 export async function recordResolution(input: RecordInput): Promise<RecordResult> {
-  // If session_id is provided, check if a Resolution already exists for this session.
-  // If so, update it in place rather than creating a duplicate.
+  // Deduplication priority:
+  // 1. session_id match — same session, always update in place
+  // 2. ticket_id match within same team — context-compaction-safe dedup;
+  //    an agent resuming after compaction won't remember session_id but
+  //    will still pass the same ticket_id, so we merge into the existing record
+  // 3. Neither — create new
   let resolutionId: string;
   let isUpdate = false;
 
@@ -58,6 +62,22 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     const existing = await runQuery(
       `MATCH (r:Resolution {session_id: $sessionId}) RETURN r.id AS id LIMIT 1`,
       { sessionId: input.session_id },
+    );
+    if (existing.length > 0) {
+      resolutionId = existing[0].get("id") as string;
+      isUpdate = true;
+    } else {
+      resolutionId = uuid();
+    }
+  } else if (input.ticket_id) {
+    // Fall back to ticket_id dedup within the same team so that resumed/compacted
+    // sessions don't create duplicate records for the same JIRA ticket.
+    const existing = await runQuery(
+      `MATCH (r:Resolution)-[:SCOPED_TO]->(t:Team {id: $teamId})
+       MATCH (r)-[:HAS_TICKET]->(tk:Ticket {ticket_id: $ticketId})
+       WHERE r.source = 'agent'
+       RETURN r.id AS id ORDER BY r.created_at DESC LIMIT 1`,
+      { teamId: input.teamId, ticketId: input.ticket_id },
     );
     if (existing.length > 0) {
       resolutionId = existing[0].get("id") as string;
@@ -93,11 +113,12 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
   }
 
   // When updating, combine previous and new root_cause/fix_approach if they differ
+  const appendLabel = input.session_id ? "Additional finding (same session)" : "Additional finding (resumed after compaction)";
   const combinedRootCause = isUpdate && existingRootCause && existingRootCause !== input.root_cause
-    ? `${existingRootCause}\n\n--- Additional finding (same session) ---\n${input.root_cause}`
+    ? `${existingRootCause}\n\n--- ${appendLabel} ---\n${input.root_cause}`
     : input.root_cause;
   const combinedFixApproach = isUpdate && existingFixApproach && existingFixApproach !== input.fix_approach
-    ? `${existingFixApproach}\n\n--- Additional finding (same session) ---\n${input.fix_approach}`
+    ? `${existingFixApproach}\n\n--- ${appendLabel} ---\n${input.fix_approach}`
     : input.fix_approach;
 
   if (isUpdate) {
