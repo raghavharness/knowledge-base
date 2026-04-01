@@ -1,4 +1,4 @@
-import { getDriver } from "../knowledge/graph.js";
+import { runWrite } from "../knowledge/graph.js";
 import { adjustPatternConfidence } from "../knowledge/patterns.js";
 import {
   checkPromotionEligibility,
@@ -30,54 +30,40 @@ async function updateResolutionStatus(
   resolutionId: string,
   status: string,
 ): Promise<string[]> {
-  const driver = getDriver();
-  const session = driver.session();
+  const records = await runWrite(
+    `MATCH (r:Resolution { id: $resolutionId })
+     SET r.status = $status, r.updated_at = $now
+     WITH r
+     OPTIONAL MATCH (r)-[:MATCHED_PATTERN]->(p:Pattern)
+     RETURN r.id AS id, collect(p.id) AS patternIds`,
+    {
+      resolutionId,
+      status,
+      now: new Date().toISOString(),
+    },
+  );
 
-  try {
-    const result = await session.run(
-      `MATCH (r:Resolution { id: $resolutionId })
-       SET r.status = $status, r.updated_at = $now
-       WITH r
-       OPTIONAL MATCH (r)-[:APPLIES_PATTERN]->(p:Pattern)
-       RETURN r.id AS id, collect(p.id) AS patternIds`,
-      {
-        resolutionId,
-        status,
-        now: new Date().toISOString(),
-      },
-    );
-
-    if (result.records.length === 0) {
-      return [];
-    }
-
-    return result.records[0].get("patternIds") as string[];
-  } finally {
-    await session.close();
+  if (records.length === 0) {
+    return [];
   }
+
+  return records[0].get("patternIds") as string[];
 }
 
 /**
  * Flag a resolution for investigation by adding a flag property.
  */
 async function flagForInvestigation(resolutionId: string): Promise<void> {
-  const driver = getDriver();
-  const session = driver.session();
-
-  try {
-    await session.run(
-      `MATCH (r:Resolution { id: $resolutionId })
-       SET r.flagged = true,
-           r.flagged_at = $now,
-           r.flag_reason = "reverted"`,
-      {
-        resolutionId,
-        now: new Date().toISOString(),
-      },
-    );
-  } finally {
-    await session.close();
-  }
+  await runWrite(
+    `MATCH (r:Resolution { id: $resolutionId })
+     SET r.flagged = true,
+         r.flagged_at = $now,
+         r.flag_reason = "reverted"`,
+    {
+      resolutionId,
+      now: new Date().toISOString(),
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------

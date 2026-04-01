@@ -97,9 +97,9 @@ export default function ResolutionDetailPage() {
             <Chip label={data.ticket.type} size="small" sx={{ bgcolor: `${colors.purple}18`, color: colors.purple, border: `1px solid ${colors.purple}30`, fontSize: '0.7rem', height: 22 }} />
           )}
         </Box>
-        {data.ticket?.summary && (
+        {(data.summary || data.ticket?.summary || data.error_signature) && (
           <Typography variant="body1" sx={{ mb: 1.5, fontWeight: 500 }}>
-            {data.ticket.summary}
+            {data.summary || data.ticket?.summary || data.error_signature}
           </Typography>
         )}
         <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', color: colors.text2, fontSize: '0.8rem' }}>

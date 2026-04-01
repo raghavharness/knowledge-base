@@ -18,8 +18,8 @@ FOR (t:Team) REQUIRE t.id IS UNIQUE;
 CREATE CONSTRAINT pattern_id_unique IF NOT EXISTS
 FOR (p:Pattern) REQUIRE p.id IS UNIQUE;
 
-CREATE CONSTRAINT ticket_id_unique IF NOT EXISTS
-FOR (tk:Ticket) REQUIRE tk.id IS UNIQUE;
+CREATE CONSTRAINT ticket_ticket_id_unique IF NOT EXISTS
+FOR (tk:Ticket) REQUIRE tk.ticket_id IS UNIQUE;
 
 CREATE CONSTRAINT pr_url_unique IF NOT EXISTS
 FOR (pr:PR) REQUIRE pr.url IS UNIQUE;

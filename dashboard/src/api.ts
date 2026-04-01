@@ -68,6 +68,7 @@ export interface Resolution {
 
 export interface ResolutionDetail {
   id: string
+  summary: string | null
   category: string | null
   tier: number
   confidence: number | null

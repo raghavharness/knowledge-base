@@ -44,9 +44,9 @@ export async function checkPromotionEligibility(
   // Fetch the resolution, its changed files, and associated pattern data
   const cypher = `
     MATCH (res:Resolution {id: $resolutionId})
-    OPTIONAL MATCH (res)-[:CHANGED]->(f:File)
-    OPTIONAL MATCH (error:Error)-[:RESOLVED_BY]->(res)
-    OPTIONAL MATCH (error)-[:MATCHES_PATTERN]->(p:Pattern)
+    OPTIONAL MATCH (res)-[:HAS_FIX]->(fix:Fix)-[:CHANGED]->(f:File)
+    OPTIONAL MATCH (res)-[:HAS_ERROR]->(error:Error)
+    OPTIONAL MATCH (res)-[:MATCHED_PATTERN]->(p:Pattern)
     OPTIONAL MATCH (p2:Pattern)
       WHERE p2.error_signature = p.error_signature
         AND p2.team_id <> p.team_id
@@ -156,13 +156,9 @@ export async function manualPromote(resolutionId: string): Promise<void> {
 async function applyPromotion(resolutionId: string): Promise<void> {
   const cypher = `
     MATCH (res:Resolution {id: $resolutionId})
-    OPTIONAL MATCH (error:Error)-[:RESOLVED_BY]->(res)
+    OPTIONAL MATCH (res)-[:HAS_ERROR]->(error:Error)
 
-    // Remove team scoping
-    OPTIONAL MATCH (error)-[scoped:SCOPED_TO]->(:Team)
-    DELETE scoped
-
-    // Mark as global
+    // Mark as global (keep team scoping for provenance, add global flag)
     SET error.global    = true,
         res.global      = true,
         res.promoted_at = datetime()

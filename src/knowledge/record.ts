@@ -3,6 +3,7 @@ import { runWrite, runQuery } from "./graph.js";
 import { generateEmbedding } from "./embeddings.js";
 import { createOrUpdatePattern } from "./patterns.js";
 import { checkPromotionEligibility } from "./promotion.js";
+import { isValidPrUrl, extractPrNumber, extractRepoFromUrl, extractRepoUrl } from "./url-utils.js";
 
 export type ResolutionType = "code_fix" | "config_change" | "knowledge_gap" | "expected_behavior" | "documentation" | "environment";
 
@@ -20,6 +21,7 @@ export interface RecordInput {
   error_signature: string;
   input_type: string;
   ticket_id?: string;
+  ticket_summary?: string;
   pr_url?: string;
   pr_repo?: string;
   root_cause: string;
@@ -57,6 +59,7 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     CREATE (res:Resolution {
       id: $resolutionId,
       source: 'agent',
+      summary: $summary,
       resolution_type: $resolutionType,
       status: 'pending',
       input_type: $inputType,
@@ -130,6 +133,7 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     `,
     {
       resolutionId,
+      summary: input.ticket_summary ?? input.error_signature,
       resolutionType: input.resolution_type ?? "code_fix",
       errorSignature: input.error_signature,
       rootCause: input.root_cause,
@@ -155,13 +159,14 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     const project = input.ticket_id.split("-")[0];
     await runWrite(
       `
-      MERGE (t:Ticket {id: $ticketId})
-      ON CREATE SET t.provider = 'jira', t.project = $project
+      MERGE (t:Ticket {ticket_id: $ticketId})
+      ON CREATE SET t.id = randomUUID(), t.provider = 'jira', t.project = $project
+      SET t.summary = CASE WHEN $ticketSummary IS NOT NULL THEN $ticketSummary ELSE t.summary END
       WITH t
       MATCH (res:Resolution {id: $resolutionId})
-      CREATE (res)-[:FOR_TICKET]->(t)
+      MERGE (res)-[:HAS_TICKET]->(t)
       `,
-      { ticketId: input.ticket_id, project, resolutionId }
+      { ticketId: input.ticket_id, ticketSummary: input.ticket_summary ?? null, project, resolutionId }
     );
   }
 
@@ -249,18 +254,6 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
   };
 }
 
-/**
- * Validate that a URL is an actual PR link (GitHub or Harness Code), not a
- * JIRA link, Confluence page, or other non-PR URL.
- */
-function isValidPrUrl(url: string): boolean {
-  // GitHub PR: https://github.com/owner/repo/pull/123
-  if (/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(url)) return true;
-  // Harness Code PR: .../repos/REPO/pulls/123 or .../repos/REPO/pullreq/123
-  if (/\/repos\/[^/]+\/pull(?:s|req)\/\d+/.test(url)) return true;
-  return false;
-}
-
 function categorizeRootCause(rootCause: string): string {
   const lower = rootCause.toLowerCase();
   if (lower.includes("nil") || lower.includes("null") || lower.includes("undefined")) return "nil_check";
@@ -273,27 +266,3 @@ function categorizeRootCause(rootCause: string): string {
   return "other";
 }
 
-function extractPrNumber(url: string): string {
-  const match = url.match(/\/(?:pull|pulls)\/(\d+)/);
-  return match ? match[1] : "0";
-}
-
-function extractRepoFromUrl(url: string): string {
-  // GitHub: https://github.com/owner/repo/pull/123
-  const ghMatch = url.match(/github\.com\/([^/]+\/[^/]+)/);
-  if (ghMatch) return ghMatch[1];
-
-  // Harness: .../repos/REPO_NAME/pulls/...
-  const harnessMatch = url.match(/\/repos\/([^/]+)\//);
-  if (harnessMatch) return harnessMatch[1];
-
-  return "";
-}
-
-function extractRepoUrl(prUrl: string): string {
-  // GitHub: return repo URL without /pull/N
-  const ghMatch = prUrl.match(/(https:\/\/github\.com\/[^/]+\/[^/]+)/);
-  if (ghMatch) return ghMatch[1];
-
-  return "";
-}

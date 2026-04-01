@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import yaml from "js-yaml";
-import { getDriver } from "../knowledge/graph.js";
+import { runQuery, runWrite } from "../knowledge/graph.js";
 import { signToken, type TokenResult } from "./jwt.js";
 
 // ---------------------------------------------------------------------------
@@ -119,48 +119,40 @@ export async function registerUser(
   const teamIds = resolveTeams(projects);
 
   // --- 3. Check for existing user ---
-  const driver = getDriver();
-  const session = driver.session();
+  const existingRecords = await runQuery(
+    `MATCH (u:User { atlassian_id: $atlassian_id })
+     OPTIONAL MATCH (u)-[:MEMBER_OF]->(t:Team)
+     RETURN u.id AS id, u.email AS email, collect(t.id) AS teams`,
+    { atlassian_id },
+  );
 
-  try {
-    // Look up by atlassian_id
-    const existingResult = await session.run(
-      `MATCH (u:User { atlassian_id: $atlassian_id })
-       OPTIONAL MATCH (u)-[:MEMBER_OF]->(t:Team)
-       RETURN u.id AS id, u.email AS email, collect(t.id) AS teams`,
-      { atlassian_id },
-    );
+  if (existingRecords.length > 0) {
+    const record = existingRecords[0];
+    const userId = record.get("id") as string;
+    const existingEmail = record.get("email") as string;
+    const existingTeams = record.get("teams") as string[];
 
-    if (existingResult.records.length > 0) {
-      const record = existingResult.records[0];
-      const userId = record.get("id") as string;
-      const existingEmail = record.get("email") as string;
-      const existingTeams = record.get("teams") as string[];
-
-      const result = signToken({ userId, email: existingEmail, teams: existingTeams });
-      return { token: result.token, userId, teams: existingTeams };
-    }
-
-    // --- 4. Create new user ---
-    const userId = uuidv4();
-
-    await session.run(
-      `CREATE (u:User {
-         id: $id,
-         atlassian_id: $atlassian_id,
-         email: $email,
-         name: $name
-       })
-       WITH u
-       UNWIND $teamIds AS teamId
-       MERGE (t:Team { id: teamId })
-       CREATE (u)-[:MEMBER_OF]->(t)`,
-      { id: userId, atlassian_id, email, name, teamIds },
-    );
-
-    const result = signToken({ userId, email, teams: teamIds });
-    return { token: result.token, userId, teams: teamIds };
-  } finally {
-    await session.close();
+    const result = signToken({ userId, email: existingEmail, teams: existingTeams });
+    return { token: result.token, userId, teams: existingTeams };
   }
+
+  // --- 4. Create new user ---
+  const userId = uuidv4();
+
+  await runWrite(
+    `CREATE (u:User {
+       id: $id,
+       atlassian_id: $atlassian_id,
+       email: $email,
+       name: $name
+     })
+     WITH u
+     UNWIND $teamIds AS teamId
+     MERGE (t:Team { id: teamId })
+     CREATE (u)-[:MEMBER_OF]->(t)`,
+    { id: userId, atlassian_id, email, name, teamIds },
+  );
+
+  const result = signToken({ userId, email, teams: teamIds });
+  return { token: result.token, userId, teams: teamIds };
 }

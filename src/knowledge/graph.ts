@@ -49,6 +49,21 @@ export async function runWrite(
 }
 
 /**
+ * Runs a write transaction with access to the transaction object for multiple
+ * sequential operations within a single atomic transaction.
+ */
+export async function runWriteTransaction<T>(
+  work: (tx: import("neo4j-driver").ManagedTransaction) => Promise<T>,
+): Promise<T> {
+  const session = getDriver().session({ defaultAccessMode: neo4j.session.WRITE });
+  try {
+    return await session.executeWrite(work);
+  } finally {
+    await session.close();
+  }
+}
+
+/**
  * Closes the Neo4j driver and releases all resources.
  */
 export async function closeDriver(): Promise<void> {

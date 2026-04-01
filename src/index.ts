@@ -1,5 +1,6 @@
 import { startHttpServer } from "./mcp/server.js";
 import { closeDriver } from "./knowledge/graph.js";
+import { cleanExpiredSessions } from "./sessions/blackboard.js";
 
 const PORT = parseInt(process.env.PORT ?? "3847", 10);
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -15,9 +16,23 @@ async function main() {
 
   await startHttpServer(PORT, HOST);
 
+  // Clean expired sessions every hour
+  const SESSION_CLEANUP_INTERVAL = 60 * 60 * 1000;
+  const cleanupTimer = setInterval(async () => {
+    try {
+      const deleted = await cleanExpiredSessions();
+      if (deleted > 0) {
+        console.log(`Session cleanup: removed ${deleted} expired session(s)`);
+      }
+    } catch (err) {
+      console.error("Session cleanup error:", err);
+    }
+  }, SESSION_CLEANUP_INTERVAL);
+
   // Graceful shutdown
   const shutdown = async () => {
     console.log("\nShutting down...");
+    clearInterval(cleanupTimer);
     await closeDriver();
     process.exit(0);
   };

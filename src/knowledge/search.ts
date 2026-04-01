@@ -36,7 +36,7 @@ export async function searchSimilar(params: {
     MATCH (res)-[:HAS_FIX]->(fix:Fix)
     OPTIONAL MATCH (res)-[:HAS_ROOT_CAUSE]->(rc:RootCause)
     OPTIONAL MATCH (fix)-[:CHANGED]->(f:File)
-    OPTIONAL MATCH (res)-[:FOR_TICKET]->(tk:Ticket)
+    OPTIONAL MATCH (res)-[:HAS_TICKET]->(tk:Ticket)
     OPTIONAL MATCH (res)-[:HAS_PR]->(pr:PR)
     OPTIONAL MATCH (pr)-[:IN_REPO]->(repo:Repo)
     RETURN
@@ -46,7 +46,7 @@ export async function searchSimilar(params: {
       fix.approach            AS fix_approach,
       collect(DISTINCT f.path) AS files_changed,
       score                   AS confidence,
-      tk.id                   AS ticket,
+      tk.ticket_id             AS ticket,
       pr.url                  AS pr_url,
       repo.name               AS repo
     ORDER BY score DESC
@@ -79,7 +79,7 @@ export async function searchByFile(params: {
     OPTIONAL MATCH (res)-[:HAS_ERROR]->(err:Error)
     OPTIONAL MATCH (res)-[:HAS_ROOT_CAUSE]->(rc:RootCause)
     OPTIONAL MATCH (fix)-[:CHANGED]->(allFiles:File)
-    OPTIONAL MATCH (res)-[:FOR_TICKET]->(tk:Ticket)
+    OPTIONAL MATCH (res)-[:HAS_TICKET]->(tk:Ticket)
     OPTIONAL MATCH (res)-[:HAS_PR]->(pr:PR)
     ${repoFilter}
     RETURN
@@ -115,7 +115,7 @@ export async function searchByModule(params: {
     OPTIONAL MATCH (res)-[:HAS_ERROR]->(err:Error)
     OPTIONAL MATCH (res)-[:HAS_ROOT_CAUSE]->(rc:RootCause)
     OPTIONAL MATCH (fix)-[:CHANGED]->(allFiles:File)
-    OPTIONAL MATCH (res)-[:FOR_TICKET]->(tk:Ticket)
+    OPTIONAL MATCH (res)-[:HAS_TICKET]->(tk:Ticket)
     OPTIONAL MATCH (res)-[:HAS_PR]->(pr:PR)
     OPTIONAL MATCH (pr)-[:IN_REPO]->(repo:Repo)
     RETURN
@@ -152,7 +152,7 @@ export async function searchByErrorType(params: {
     WITH res, err, fix, head(collect(rc)) AS rc
     OPTIONAL MATCH (fix)-[:CHANGED]->(f:File)
     WITH res, err, fix, rc, collect(DISTINCT f.path) AS files_changed
-    OPTIONAL MATCH (res)-[:FOR_TICKET]->(tk:Ticket)
+    OPTIONAL MATCH (res)-[:HAS_TICKET]->(tk:Ticket)
     WITH res, err, fix, rc, files_changed, head(collect(tk)) AS tk
     OPTIONAL MATCH (res)-[:HAS_PR]->(pr:PR)
     WITH res, err, fix, rc, files_changed, tk, head(collect(pr)) AS pr
@@ -199,7 +199,7 @@ export async function searchCrossTeam(params: {
     MATCH (res)-[:HAS_FIX]->(fix:Fix)
     OPTIONAL MATCH (res)-[:HAS_ROOT_CAUSE]->(rc:RootCause)
     OPTIONAL MATCH (fix)-[:CHANGED]->(f:File)
-    OPTIONAL MATCH (res)-[:FOR_TICKET]->(tk:Ticket)
+    OPTIONAL MATCH (res)-[:HAS_TICKET]->(tk:Ticket)
     OPTIONAL MATCH (res)-[:HAS_PR]->(pr:PR)
     OPTIONAL MATCH (pr)-[:IN_REPO]->(repo:Repo)
     OPTIONAL MATCH (res)-[:SCOPED_TO]->(srcTeam:Team)
@@ -243,7 +243,7 @@ export async function searchFullText(params: {
     MATCH (res)-[:HAS_FIX]->(fix:Fix)
     OPTIONAL MATCH (res)-[:HAS_ROOT_CAUSE]->(rc:RootCause)
     OPTIONAL MATCH (fix)-[:CHANGED]->(f:File)
-    OPTIONAL MATCH (res)-[:FOR_TICKET]->(tk:Ticket)
+    OPTIONAL MATCH (res)-[:HAS_TICKET]->(tk:Ticket)
     OPTIONAL MATCH (res)-[:HAS_PR]->(pr:PR)
     OPTIONAL MATCH (pr)-[:IN_REPO]->(repo:Repo)
     RETURN

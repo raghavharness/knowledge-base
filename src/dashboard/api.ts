@@ -83,7 +83,7 @@ router.get("/stats", async (req, res) => {
         OPTIONAL MATCH (r)-[:HAS_ROOT_CAUSE]->(rc:RootCause)
         RETURN r.id AS id, r.category AS category, r.quality_tier AS tier,
                r.created_at AS created_at, e.signature AS error,
-               tk.ticket_id AS ticket_id, tk.summary AS summary,
+               tk.ticket_id AS ticket_id, COALESCE(tk.summary, r.summary) AS summary,
                f.approach AS fix, rc.description AS root_cause
         ORDER BY toString(r.created_at) DESC
         LIMIT 20
@@ -214,7 +214,7 @@ router.get("/resolutions", async (req, res) => {
         RETURN r.id AS id, r.category AS category, r.quality_tier AS tier,
                r.created_at AS created_at, r.confidence AS confidence,
                e.signature AS error, tk.ticket_id AS ticket_id,
-               tk.summary AS summary, tk.type AS ticket_type,
+               COALESCE(tk.summary, r.summary) AS summary, tk.type AS ticket_type,
                tk.priority AS ticket_priority, tk.assignee AS assignee,
                f.approach AS fix,
                rc.description AS root_cause, p.url AS pr_url,
@@ -303,7 +303,7 @@ router.get("/resolutions/:id", async (req, res) => {
            collect(DISTINCT file.path) AS files_changed,
            collect(DISTINCT m.name) AS modules,
            collect(DISTINCT sim.id) AS similar_ids
-      RETURN r.id AS id, r.category AS category, r.quality_tier AS tier,
+      RETURN r.id AS id, r.summary AS summary, r.category AS category, r.quality_tier AS tier,
              r.confidence AS confidence, r.search_weight AS search_weight,
              r.created_at AS created_at, r.ingested_by AS ingested_by,
              r.source AS source,
@@ -356,6 +356,7 @@ router.get("/resolutions/:id", async (req, res) => {
 
     res.json({
       id: str(r.get("id")),
+      summary: str(r.get("summary")),
       category: str(r.get("category")),
       tier: toNum(r.get("tier")),
       confidence: r.get("confidence"),
@@ -601,9 +602,8 @@ router.get("/insights", async (req, res) => {
         WITH r, t, head(collect(u)) AS u
         OPTIONAL MATCH (r)-[:HAS_ERROR]->(e:Error)
         WITH r, t, u, head(collect(e)) AS e
-        OPTIONAL MATCH (r)-[:FOR_TICKET]->(t1:Ticket)
-        OPTIONAL MATCH (r)-[:HAS_TICKET]->(t2:Ticket)
-        WITH r, t, u, e, coalesce(head(collect(t1)), head(collect(t2))) AS tk
+        OPTIONAL MATCH (r)-[:HAS_TICKET]->(tk0:Ticket)
+        WITH r, t, u, e, head(collect(tk0)) AS tk
         OPTIONAL MATCH (r)-[:HAS_ROOT_CAUSE]->(rc:RootCause)
         WITH r, t, u, e, tk, head(collect(rc)) AS rc
         OPTIONAL MATCH (r)-[:HAS_FIX]->(f:Fix)
@@ -625,7 +625,7 @@ router.get("/insights", async (req, res) => {
                u.name AS user_name, u.email AS user_email,
                t.id AS team_id, t.name AS team_name,
                e.signature AS error_signature,
-               coalesce(tk.ticket_id, tk.id) AS ticket_id,
+               tk.ticket_id AS ticket_id,
                tk.summary AS ticket_summary,
                rc.description AS root_cause,
                f.approach AS fix_approach,

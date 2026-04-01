@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { registerTools } from "./tools.js";
 import { registerPrompts } from "./prompts.js";
 import { dashboardApi } from "../dashboard/api.js";
+import { authStore, type AuthContext } from "../auth/context.js";
+import { verifyToken, extractFromHeader } from "../auth/jwt.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -25,17 +27,45 @@ export async function startHttpServer(port: number, host: string) {
   const app = express();
   app.use(express.json());
 
+  // Create a single MCP server instance and reuse it for all requests.
+  // The StreamableHTTPServerTransport is stateless (sessionIdGenerator: undefined),
+  // so each request gets its own transport but shares the server's tool registry.
+  const mcpServer = createMcpServer();
+
   app.post("/mcp", async (req, res) => {
-    const server = createMcpServer();
+    // Extract auth from Authorization header (optional — ship_register doesn't need it)
+    let authContext: AuthContext | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      try {
+        const raw = extractFromHeader(authHeader);
+        const payload = verifyToken(raw);
+        authContext = {
+          userId: payload.sub,
+          email: payload.email,
+          teams: payload.teams,
+          primaryTeam: payload.teams[0],
+        };
+      } catch {
+        // Auth failures will surface when tools call getAuthContext()
+      }
+    }
+
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless
     });
     res.on("close", () => {
       transport.close();
-      server.close();
     });
-    await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+    await mcpServer.connect(transport);
+
+    // Run the MCP handler within the auth context
+    const handler = () => transport.handleRequest(req, res, req.body);
+    if (authContext) {
+      await authStore.run(authContext, handler);
+    } else {
+      await handler();
+    }
   });
 
   app.get("/mcp", async (req, res) => {

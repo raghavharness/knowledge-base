@@ -1,6 +1,5 @@
 const GOOGLE_EMBEDDING_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001";
-const EMBEDDING_DIM = 3072;
 
 /**
  * Generates a 768-dimensional embedding for a single text string
