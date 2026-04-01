@@ -425,14 +425,55 @@ Use \`team_config.ci.providers[]\` — each has a \`detect_by\` field:
    gh pr checks <PR_NUMBER> --json name,state,conclusion
    gh run view <RUN_ID> --log-failed
    \`\`\`
-4. Diagnose failure, apply fix, push, re-monitor
+4. If \`gh run view\` fails or returns no logs: fall through to **Log Fallback** below.
+5. Diagnose failure, apply fix, push, re-monitor
 
 ### Harness CI
 1. **Always poll checks — do not assume they pass:** \`mcp__harness__harness_list(resource_type: "pr_check", repo_id: "<repo>", pr_number: <num>)\`
    Or use \`mcp__harness0__\` prefix for the secondary account.
 2. If pending/running: wait 30 seconds, re-check
-3. If failed: fetch execution logs for diagnosis
-4. Diagnose failure, apply fix, push, re-monitor
+3. If failed: fetch execution logs via MCP:
+   \`mcp__harness__harness_get(resource_type: "execution_log", ...)\` or the \`harness0\` equivalent.
+4. If MCP log fetch fails or returns empty: fall through to **Log Fallback** below.
+5. Diagnose failure, apply fix, push, re-monitor
+
+### Log Fallback — GCS Bucket (use when MCP/gh log fetch fails or returns no output)
+
+**MANDATORY fallback whenever any CI log tool fails. Do NOT give up on log retrieval — always attempt the bucket.**
+
+Every CI provider in \`team_config.ci.providers[]\` has a \`gcp_bucket\` and \`log_path_format\` field. Use these to fetch logs directly from GCS when the primary tool fails.
+
+**Step 1 — Get execution metadata** needed to fill the path template. Retrieve pipeline execution details:
+- For Harness: call \`mcp__harness__harness_get(resource_type: "pipeline_execution", ...)\` or equivalent to get \`pipelineId\`, \`runSequence\`, \`executionId\`, \`stageId\`, \`stepId\`, \`orgId\`, \`projectId\`, \`accountId\`.
+- For GitHub: get \`RUN_ID\` from \`gh pr checks\` output.
+
+**Step 2 — Construct the GCS log path** using the provider's \`log_path_format\`:
+- \`harness0\` bucket: \`gs://harness-zero-harness0-1391-log-service/\`
+  Path format: \`{accountId}/accountId:{accountId}/orgId:{orgId}/projectId:{projectId}/pipelineId:{pipelineId}/runSequence:{runSequence}/level0:pipeline/level1:stages/level2:{stageId}/level3:spec/level4:execution/level5:steps/level6:{stepId}\`
+- \`harness-prod\` bucket: \`gs://free-log-service/\`
+  Path format: \`{accountId}/{accountId}/pipeline/{pipelineId}/{runSequence}/-{executionId}/{stageIdentifier}/{stepIdentifier}\`
+
+**Step 3 — Fetch logs from GCS:**
+\`\`\`bash
+# List available log files for the execution
+gcloud storage ls "gs://<bucket>/<constructed_path>*"
+
+# Download and read the log file
+gcloud storage cat "gs://<bucket>/<constructed_path>"
+\`\`\`
+
+If \`gcloud storage\` is unavailable, try \`gsutil\`:
+\`\`\`bash
+gsutil ls "gs://<bucket>/<constructed_path>*"
+gsutil cat "gs://<bucket>/<constructed_path>"
+\`\`\`
+
+If the exact path is unclear, list the parent directory to discover the file names:
+\`\`\`bash
+gcloud storage ls "gs://<bucket>/<accountId>/<partial_path>/"
+\`\`\`
+
+**Step 4 — Parse logs for failure cause:** Look for lines containing \`ERROR\`, \`FATAL\`, \`FAILED\`, stack traces, or exit codes. Extract the most specific error message and treat it as the \`error_signature\` for diagnosis.
 
 ### Retry Limits
 - Maximum fix attempts: \`team_config.ci.max_fix_attempts\` (default: 3)
@@ -553,6 +594,7 @@ Provide a concise summary:
 2. **Don't ask, ship.** Be autonomous. Make decisions and move forward. Only ask the user when confidence is below 0.4 or a destructive action is ambiguous.
 3. **Always use LSP before grep** for code navigation. LSP provides precise symbol resolution; grep is a fallback.
 4. **Always monitor CI after every push or PR creation.** Never skip Phase 4. Do not proceed to Phase 5 until CI checks have been explicitly fetched and confirmed passing or failing. "It should pass" is not a substitute for actually checking.
+4a. **Always fall back to GCS bucket logs** when MCP or \`gh\` log fetching fails. Every provider in \`team_config.ci.providers[]\` has \`gcp_bucket\` and \`log_path_format\`. Use \`gcloud storage cat\` to read logs directly. Never give up on log retrieval before trying the bucket.
 5. **Always record the resolution.** Never skip Phase 6.
 6. **Use remote-shell for live debugging** when logs are insufficient.
 7. **Save findings to blackboard after each phase.**
