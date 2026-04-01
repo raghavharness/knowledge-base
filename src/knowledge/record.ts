@@ -20,6 +20,7 @@ export interface RecordInput {
   resolution_type?: ResolutionType;
   error_signature: string;
   input_type: string;
+  session_id?: string;
   ticket_id?: string;
   ticket_summary?: string;
   ticket_assignee?: string;
@@ -42,12 +43,31 @@ export interface RecordInput {
 
 export interface RecordResult {
   resolution_id: string;
+  updated: boolean;
   patterns_updated: number;
   similar_resolutions_linked: number;
 }
 
 export async function recordResolution(input: RecordInput): Promise<RecordResult> {
-  const resolutionId = uuid();
+  // If session_id is provided, check if a Resolution already exists for this session.
+  // If so, update it in place rather than creating a duplicate.
+  let resolutionId: string;
+  let isUpdate = false;
+
+  if (input.session_id) {
+    const existing = await runQuery(
+      `MATCH (r:Resolution {session_id: $sessionId}) RETURN r.id AS id LIMIT 1`,
+      { sessionId: input.session_id },
+    );
+    if (existing.length > 0) {
+      resolutionId = existing[0].get("id") as string;
+      isUpdate = true;
+    } else {
+      resolutionId = uuid();
+    }
+  } else {
+    resolutionId = uuid();
+  }
 
   // Generate embeddings
   const [errorEmbedding, resolutionEmbedding] = await Promise.all([
@@ -55,27 +75,105 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     generateEmbedding(`${input.error_signature} ${input.root_cause} ${input.fix_approach}`),
   ]);
 
-  // Create all nodes and relationships in a single transaction
+  if (isUpdate) {
+    // Delete old Error/RootCause/Fix nodes so they can be recreated fresh
+    await runWrite(
+      `MATCH (res:Resolution {id: $resolutionId})
+       OPTIONAL MATCH (res)-[re:HAS_ERROR]->(e:Error)
+       OPTIONAL MATCH (res)-[rrc:HAS_ROOT_CAUSE]->(rc:RootCause)
+       OPTIONAL MATCH (res)-[rf:HAS_FIX]->(f:Fix)
+       OPTIONAL MATCH (res)-[rcf:CHANGED_FILE]->()
+       OPTIONAL MATCH (res)-[ram:AFFECTS_MODULE]->()
+       DELETE re, e, rrc, rc, rf, f, rcf, ram`,
+      { resolutionId },
+    );
+
+    // Update the Resolution node properties
+    await runWrite(
+      `MATCH (res:Resolution {id: $resolutionId})
+       SET res.summary = $summary,
+           res.category = $category,
+           res.resolution_type = $resolutionType,
+           res.input_type = $inputType,
+           res.ci_attempts = $ciAttempts,
+           res.investigation_path = $investigationPath,
+           res.effective_step = $effectiveStep,
+           res.time_to_root_cause_minutes = $timeToRootCause,
+           res.knowledge_used = $knowledgeUsed,
+           res.embedding = $resolutionEmbedding,
+           res.updated_at = datetime()`,
+      {
+        resolutionId,
+        summary: input.ticket_summary ?? input.error_signature,
+        category: resolutionTypeToCategory(input.resolution_type),
+        resolutionType: input.resolution_type ?? "code_fix",
+        inputType: input.input_type,
+        ciAttempts: input.ci_attempts,
+        investigationPath: input.investigation_path,
+        effectiveStep: input.effective_step ?? "",
+        timeToRootCause: input.time_to_root_cause_minutes ?? 0,
+        knowledgeUsed: input.knowledge_used ? JSON.stringify(input.knowledge_used) : "[]",
+        resolutionEmbedding,
+      },
+    );
+  } else {
+    // Create new Resolution node
+    await runWrite(
+      `
+      CREATE (res:Resolution {
+        id: $resolutionId,
+        source: 'agent',
+        summary: $summary,
+        category: $category,
+        resolution_type: $resolutionType,
+        session_id: $sessionId,
+        status: 'pending',
+        input_type: $inputType,
+        created_at: datetime(),
+        ci_attempts: $ciAttempts,
+        investigation_path: $investigationPath,
+        effective_step: $effectiveStep,
+        time_to_root_cause_minutes: $timeToRootCause,
+        knowledge_used: $knowledgeUsed,
+        ingestion_confidence: 1.0,
+        embedding: $resolutionEmbedding
+      })
+
+      // Link to User
+      WITH res
+      MATCH (u:User {id: $userId})
+      CREATE (res)-[:CREATED_BY]->(u)
+
+      // Link to Team
+      WITH res
+      MATCH (t:Team {id: $teamId})
+      CREATE (res)-[:SCOPED_TO]->(t)
+
+      RETURN true AS success
+      `,
+      {
+        resolutionId,
+        summary: input.ticket_summary ?? input.error_signature,
+        category: resolutionTypeToCategory(input.resolution_type),
+        resolutionType: input.resolution_type ?? "code_fix",
+        sessionId: input.session_id ?? null,
+        inputType: input.input_type,
+        ciAttempts: input.ci_attempts,
+        investigationPath: input.investigation_path,
+        effectiveStep: input.effective_step ?? "",
+        timeToRootCause: input.time_to_root_cause_minutes ?? 0,
+        knowledgeUsed: input.knowledge_used ? JSON.stringify(input.knowledge_used) : "[]",
+        userId: input.userId,
+        teamId: input.teamId,
+        resolutionEmbedding,
+      },
+    );
+  }
+
+  // Recreate Error, RootCause, Fix nodes (same for both create and update paths)
   await runWrite(
     `
-    // Create Resolution
-    CREATE (res:Resolution {
-      id: $resolutionId,
-      source: 'agent',
-      summary: $summary,
-      category: $category,
-      resolution_type: $resolutionType,
-      status: 'pending',
-      input_type: $inputType,
-      created_at: datetime(),
-      ci_attempts: $ciAttempts,
-      investigation_path: $investigationPath,
-      effective_step: $effectiveStep,
-      time_to_root_cause_minutes: $timeToRootCause,
-      knowledge_used: $knowledgeUsed,
-      ingestion_confidence: 1.0,
-      embedding: $resolutionEmbedding
-    })
+    MATCH (res:Resolution {id: $resolutionId})
 
     // Create or merge Error
     MERGE (err:Error {signature: $errorSignature})
@@ -98,24 +196,14 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
       diff_summary: $diffSummary
     })
 
-    // Link Resolution -> Error, RootCause, Fix
     CREATE (res)-[:HAS_ERROR]->(err)
     CREATE (res)-[:HAS_ROOT_CAUSE]->(rc)
     CREATE (res)-[:HAS_FIX]->(fix)
 
-    // Link to User
-    WITH res, fix, err
-    MATCH (u:User {id: $userId})
-    CREATE (res)-[:CREATED_BY]->(u)
-
-    // Link to Team
-    WITH res, fix, err
-    MATCH (t:Team {id: $teamId})
-    CREATE (res)-[:SCOPED_TO]->(t)
-
     // Create File nodes and link
-    WITH res, fix, err
-    UNWIND $filesChanged AS fc
+    WITH res, fix
+    UNWIND CASE WHEN $filesChanged = [] THEN [null] ELSE $filesChanged END AS fc
+    WITH res, fix, fc WHERE fc IS NOT NULL
     MERGE (f:File {path: fc.path})
     ON CREATE SET f.language = CASE
       WHEN fc.path ENDS WITH '.go' THEN 'go'
@@ -126,6 +214,7 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
       ELSE 'unknown'
     END
     CREATE (fix)-[:CHANGED]->(f)
+    MERGE (res)-[:CHANGED_FILE]->(f)
 
     // Map files to modules
     WITH f
@@ -137,29 +226,17 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     `,
     {
       resolutionId,
-      summary: input.ticket_summary ?? input.error_signature,
-      category: resolutionTypeToCategory(input.resolution_type),
-      resolutionType: input.resolution_type ?? "code_fix",
       errorSignature: input.error_signature,
       rootCause: input.root_cause,
       rootCauseCategory: categorizeRootCause(input.root_cause),
       fixApproach: input.fix_approach,
       diffSummary: input.diff_summary ?? "",
-      inputType: input.input_type,
-      ciAttempts: input.ci_attempts,
-      investigationPath: input.investigation_path,
-      effectiveStep: input.effective_step ?? "",
-      timeToRootCause: input.time_to_root_cause_minutes ?? 0,
-      knowledgeUsed: input.knowledge_used ? JSON.stringify(input.knowledge_used) : "[]",
-      userId: input.userId,
-      teamId: input.teamId,
+      errorEmbedding,
       filesChanged: input.files_changed,
-      errorEmbedding: errorEmbedding,
-      resolutionEmbedding: resolutionEmbedding,
-    }
+    },
   );
 
-  // Create Ticket node if provided
+  // Ticket node
   if (input.ticket_id) {
     const project = input.ticket_id.split("-")[0];
     await runWrite(
@@ -172,11 +249,11 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
       MATCH (res:Resolution {id: $resolutionId})
       MERGE (res)-[:HAS_TICKET]->(t)
       `,
-      { ticketId: input.ticket_id, ticketSummary: input.ticket_summary ?? null, assignee: input.ticket_assignee ?? null, project, resolutionId }
+      { ticketId: input.ticket_id, ticketSummary: input.ticket_summary ?? null, assignee: input.ticket_assignee ?? null, project, resolutionId },
     );
   }
 
-  // Create PR + Repo nodes if provided (validate URL is an actual PR, not a JIRA link)
+  // PR node (validate URL is an actual PR, not a JIRA link)
   if (input.pr_url && isValidPrUrl(input.pr_url)) {
     await runWrite(
       `
@@ -186,9 +263,8 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
           pr.author = CASE WHEN $prAuthor IS NOT NULL THEN $prAuthor ELSE pr.author END
       WITH pr
       MATCH (res:Resolution {id: $resolutionId})
-      CREATE (res)-[:HAS_PR]->(pr)
+      MERGE (res)-[:HAS_PR]->(pr)
 
-      // Create or merge Repo node and link PR to it
       WITH pr
       WHERE $prRepo IS NOT NULL AND $prRepo <> ''
       MERGE (repo:Repo {name: $prRepo})
@@ -203,7 +279,7 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
         prAuthor: input.pr_author ?? null,
         repoUrl: extractRepoUrl(input.pr_url),
         resolutionId,
-      }
+      },
     );
   }
 
@@ -218,7 +294,7 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     WHERE other_res.id <> $resolutionId
     RETURN other_res.id AS otherId, score
     `,
-    { embedding: errorEmbedding, resolutionId }
+    { embedding: errorEmbedding, resolutionId },
   );
 
   for (const record of similar) {
@@ -227,11 +303,7 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
       MATCH (a:Resolution {id: $resolutionId}), (b:Resolution {id: $otherId})
       MERGE (a)-[:SIMILAR_TO {confidence: $confidence}]->(b)
       `,
-      {
-        resolutionId,
-        otherId: record.get("otherId"),
-        confidence: record.get("score"),
-      }
+      { resolutionId, otherId: record.get("otherId"), confidence: record.get("score") },
     );
     similarCount++;
   }
@@ -259,6 +331,7 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
 
   return {
     resolution_id: resolutionId,
+    updated: isUpdate,
     patterns_updated: patternsUpdated,
     similar_resolutions_linked: similarCount,
   };
@@ -287,4 +360,3 @@ function categorizeRootCause(rootCause: string): string {
   if (lower.includes("network") || lower.includes("connection")) return "network";
   return "other";
 }
-

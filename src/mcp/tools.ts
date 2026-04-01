@@ -157,9 +157,10 @@ export function registerTools(server: McpServer) {
   // ─── Tool 4: ship_record ───────────────────────────────────────────
   server.tool(
     "ship_record",
-    "Record a completed resolution. ALWAYS call this after investigating any issue — whether it was a code bug, knowledge gap, config issue, or expected behavior. The server embeds, stores, and learns from it. IMPORTANT: Always try to include both JIRA ticket details (ticket_id) AND PR details (pr_url, pr_repo). If a PR was created, these fields are critical for linking the resolution to the repository. However, if no PR exists yet (e.g. still investigating), you may proceed without PR details.",
+    "Record a completed resolution. ALWAYS call this after investigating any issue — whether it was a code bug, knowledge gap, config issue, or expected behavior. The server embeds, stores, and learns from it. IMPORTANT: Always pass session_id from your ship_blackboard session so that repeated calls within the same session UPDATE the existing resolution instead of creating duplicates. Always try to include both JIRA ticket details (ticket_id) AND PR details (pr_url, pr_repo). If a PR was created, these fields are critical for linking the resolution to the repository. However, if no PR exists yet (e.g. still investigating), you may proceed without PR details.",
     {
       token: z.string().optional().describe("JWT token — read from ~/.ship/token file (cat ~/.ship/token). If file doesn't exist, call ship_register first."),
+      session_id: z.string().optional().describe("Session ID from ship_blackboard — STRONGLY RECOMMENDED. If provided, repeated calls within the same session will update the existing resolution instead of creating a duplicate."),
       resolution_type: z
         .enum(["code_fix", "config_change", "knowledge_gap", "expected_behavior", "documentation", "environment"])
         .describe("What kind of resolution this was. Use 'knowledge_gap' when the issue was a misunderstanding, 'expected_behavior' when the system was working correctly, 'documentation' when docs needed updating, 'environment' for infra/setup issues."),
