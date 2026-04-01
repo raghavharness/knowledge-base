@@ -495,6 +495,7 @@ Even if:
 \`\`\`
 mcp__ship__ship_record(
   token: "${tokenRef}",
+  session_id: "<session_id from Phase 0 blackboard — CRITICAL for deduplication>",
   resolution_type: "code_fix|config_change|knowledge_gap|expected_behavior|documentation|environment",
   error_signature: "<normalized_error_pattern>",
   root_cause: "<what_caused_the_issue>",
@@ -503,7 +504,11 @@ mcp__ship__ship_record(
   fix_approach: "<what_was_changed_and_why>",
   files_changed: [{"path": "<path>", "summary": "<what_changed>"}],
   ticket_id: "<JIRA_ticket_id — MANDATORY, e.g. CI-21831>",
+  ticket_summary: "<JIRA ticket summary/title>",
+  ticket_assignee: "<JIRA ticket assignee name>",
   pr_url: "<pull_request_url>",
+  pr_title: "<full PR title>",
+  pr_author: "<PR author username>",
   pr_repo: "<repository_name>",
   ci_attempts: <number_of_ci_fix_cycles>,
   time_to_root_cause_minutes: <int>,
@@ -521,6 +526,10 @@ mcp__ship__ship_record(
 \`\`\`
 
 **IMPORTANT:** Always try to include both \`ticket_id\` AND \`pr_url\`/\`pr_repo\`. If a PR was created, these are critical for linking. However, if no PR exists yet (still investigating), you may proceed without PR details.
+
+**IMPORTANT — \`session_id\` prevents duplicate resolutions:** Always pass the same \`session_id\` that was generated in Phase 0. If you call \`ship_record\` more than once in a session (e.g., you discover a second distinct issue), use the **same \`session_id\`** — the server will update the existing resolution in place, appending investigation steps and findings rather than creating a duplicate.
+
+**IMPORTANT — call \`ship_record\` for every distinct resolution found, not just once at the end:** If during your investigation you identify and fix multiple distinct problems (e.g., root cause A with fix A, then root cause B with fix B), call \`ship_record\` once for each, always using the same \`session_id\`. Each call accumulates into the same resolution record — you will never create duplicates within the same session.
 
 **IMPORTANT:** Always include \`knowledge_used\` — list ALL similar resolutions that were returned by \`ship_context\` (Phase 0) and \`ship_search\` (during investigation). For each, mark \`was_helpful: true\` if it actually contributed to finding the root cause or fix, \`false\` if it was not relevant. If no similar resolutions were found, pass an empty array \`[]\`. This data powers the Insights dashboard showing how the knowledge graph helps solve issues.
 
@@ -720,6 +729,7 @@ Call \`mcp__ship__ship_record\` to capture your findings:
 \`\`\`
 mcp__ship__ship_record(
   token: "${tokenRef}",
+  session_id: "<generate a UUID at session start and reuse it for every ship_record call>",
   resolution_type: "knowledge_gap",
   error_signature: "<normalized_error_pattern_or_problem_summary>",
   root_cause: "<your_root_cause_assessment>",
@@ -728,6 +738,8 @@ mcp__ship__ship_record(
   fix_approach: "<recommended_fix_or_action_items>",
   files_changed: [],
   ticket_id: "<JIRA_ticket_id_if_any>",
+  ticket_summary: "<JIRA ticket summary/title>",
+  ticket_assignee: "<JIRA ticket assignee name>",
   time_to_root_cause_minutes: <int>,
   knowledge_used: [
     {
@@ -743,6 +755,8 @@ mcp__ship__ship_record(
 \`\`\`
 
 **IMPORTANT:** Always include \`knowledge_used\` — list ALL similar resolutions returned by \`ship_context\` (Step 1) and \`ship_search\` (Step 3). Mark each as \`was_helpful: true/false\`. Pass \`[]\` if none were found. This powers the Insights dashboard.
+
+**IMPORTANT — \`session_id\` prevents duplicates:** Generate a single UUID at the start of your session and use it for every \`ship_record\` call. If you call \`ship_record\` multiple times (e.g., you find additional findings after the initial analysis), the server will update the existing record in place rather than creating duplicates. Same session_id = same resolution, always.
 
 Even if:
 - The analysis was simple or obvious — **record it.**

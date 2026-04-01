@@ -75,6 +75,31 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     generateEmbedding(`${input.error_signature} ${input.root_cause} ${input.fix_approach}`),
   ]);
 
+  // For updates, read existing root_cause/fix_approach so we can append to them
+  let existingRootCause = "";
+  let existingFixApproach = "";
+  if (isUpdate) {
+    const prev = await runQuery(
+      `MATCH (res:Resolution {id: $resolutionId})
+       OPTIONAL MATCH (res)-[:HAS_ROOT_CAUSE]->(rc:RootCause)
+       OPTIONAL MATCH (res)-[:HAS_FIX]->(f:Fix)
+       RETURN rc.description AS root_cause, f.approach AS fix_approach`,
+      { resolutionId },
+    );
+    if (prev.length > 0) {
+      existingRootCause = (prev[0].get("root_cause") as string | null) ?? "";
+      existingFixApproach = (prev[0].get("fix_approach") as string | null) ?? "";
+    }
+  }
+
+  // When updating, combine previous and new root_cause/fix_approach if they differ
+  const combinedRootCause = isUpdate && existingRootCause && existingRootCause !== input.root_cause
+    ? `${existingRootCause}\n\n--- Additional finding (same session) ---\n${input.root_cause}`
+    : input.root_cause;
+  const combinedFixApproach = isUpdate && existingFixApproach && existingFixApproach !== input.fix_approach
+    ? `${existingFixApproach}\n\n--- Additional finding (same session) ---\n${input.fix_approach}`
+    : input.fix_approach;
+
   if (isUpdate) {
     // Delete old Error/RootCause/Fix nodes so they can be recreated fresh
     await runWrite(
@@ -228,9 +253,9 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     {
       resolutionId,
       errorSignature: input.error_signature,
-      rootCause: input.root_cause,
-      rootCauseCategory: categorizeRootCause(input.root_cause),
-      fixApproach: input.fix_approach,
+      rootCause: combinedRootCause,
+      rootCauseCategory: categorizeRootCause(combinedRootCause),
+      fixApproach: combinedFixApproach,
       diffSummary: input.diff_summary ?? "",
       errorEmbedding,
       filesChanged: input.files_changed,
