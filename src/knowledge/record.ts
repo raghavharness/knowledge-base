@@ -88,7 +88,8 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
       { resolutionId },
     );
 
-    // Update the Resolution node properties
+    // Update the Resolution node properties.
+    // investigation_path is appended (new steps only) so the full lifecycle is preserved.
     await runWrite(
       `MATCH (res:Resolution {id: $resolutionId})
        SET res.summary = $summary,
@@ -96,9 +97,9 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
            res.resolution_type = $resolutionType,
            res.input_type = $inputType,
            res.ci_attempts = $ciAttempts,
-           res.investigation_path = $investigationPath,
-           res.effective_step = $effectiveStep,
-           res.time_to_root_cause_minutes = $timeToRootCause,
+           res.investigation_path = res.investigation_path + [step IN $investigationPath WHERE NOT step IN res.investigation_path],
+           res.effective_step = CASE WHEN $effectiveStep <> '' THEN $effectiveStep ELSE res.effective_step END,
+           res.time_to_root_cause_minutes = CASE WHEN $timeToRootCause > 0 THEN res.time_to_root_cause_minutes + $timeToRootCause ELSE res.time_to_root_cause_minutes END,
            res.knowledge_used = $knowledgeUsed,
            res.embedding = $resolutionEmbedding,
            res.updated_at = datetime()`,
