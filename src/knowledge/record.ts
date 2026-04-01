@@ -22,6 +22,7 @@ export interface RecordInput {
   input_type: string;
   ticket_id?: string;
   ticket_summary?: string;
+  ticket_assignee?: string;
   pr_url?: string;
   pr_repo?: string;
   root_cause: string;
@@ -60,6 +61,7 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
       id: $resolutionId,
       source: 'agent',
       summary: $summary,
+      category: $category,
       resolution_type: $resolutionType,
       status: 'pending',
       input_type: $inputType,
@@ -134,6 +136,7 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     {
       resolutionId,
       summary: input.ticket_summary ?? input.error_signature,
+      category: resolutionTypeToCategory(input.resolution_type),
       resolutionType: input.resolution_type ?? "code_fix",
       errorSignature: input.error_signature,
       rootCause: input.root_cause,
@@ -161,12 +164,13 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
       `
       MERGE (t:Ticket {ticket_id: $ticketId})
       ON CREATE SET t.id = randomUUID(), t.provider = 'jira', t.project = $project
-      SET t.summary = CASE WHEN $ticketSummary IS NOT NULL THEN $ticketSummary ELSE t.summary END
+      SET t.summary = CASE WHEN $ticketSummary IS NOT NULL THEN $ticketSummary ELSE t.summary END,
+          t.assignee = CASE WHEN $assignee IS NOT NULL THEN $assignee ELSE t.assignee END
       WITH t
       MATCH (res:Resolution {id: $resolutionId})
       MERGE (res)-[:HAS_TICKET]->(t)
       `,
-      { ticketId: input.ticket_id, ticketSummary: input.ticket_summary ?? null, project, resolutionId }
+      { ticketId: input.ticket_id, ticketSummary: input.ticket_summary ?? null, assignee: input.ticket_assignee ?? null, project, resolutionId }
     );
   }
 
@@ -252,6 +256,18 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     patterns_updated: patternsUpdated,
     similar_resolutions_linked: similarCount,
   };
+}
+
+function resolutionTypeToCategory(resolutionType?: string): string {
+  switch (resolutionType) {
+    case "code_fix": return "bugfix";
+    case "config_change": return "config_change";
+    case "knowledge_gap": return "knowledge_gap";
+    case "expected_behavior": return "bugfix";
+    case "documentation": return "documentation";
+    case "environment": return "config_change";
+    default: return "bugfix";
+  }
 }
 
 function categorizeRootCause(rootCause: string): string {
