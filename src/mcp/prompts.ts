@@ -403,11 +403,13 @@ mcp__ship__ship_blackboard(token: "${tokenRef}", session_id: "<session_id>", pha
 })
 \`\`\`
 
+**IMMEDIATELY proceed to Phase 4: CI Monitor.** Do NOT skip to Phase 5 or Phase 6. CI monitoring is required whenever a PR has been created or updated — even if you expect it to pass.
+
 ---
 
 ## Phase 4: CI Monitor
 
-**MANDATORY after every push. Never skip this phase.**
+**MANDATORY whenever a PR exists. Never skip this phase. Proceeding to Phase 5 without completing Phase 4 is a critical workflow violation.**
 
 ### Detect CI Provider
 
@@ -416,7 +418,7 @@ Use \`team_config.ci.providers[]\` — each has a \`detect_by\` field:
 - \`"app.harness.io"\` — Harness CI
 
 ### GitHub Actions
-1. Watch checks: \`gh pr checks <PR_NUMBER> --watch\`
+1. **Wait for and watch checks — always, even if you expect them to pass:** \`gh pr checks <PR_NUMBER> --watch\`
 2. If all pass: proceed to Phase 5
 3. If any fail:
    \`\`\`bash
@@ -426,7 +428,7 @@ Use \`team_config.ci.providers[]\` — each has a \`detect_by\` field:
 4. Diagnose failure, apply fix, push, re-monitor
 
 ### Harness CI
-1. List checks: \`mcp__harness__harness_list(resource_type: "pr_check", repo_id: "<repo>", pr_number: <num>)\`
+1. **Always poll checks — do not assume they pass:** \`mcp__harness__harness_list(resource_type: "pr_check", repo_id: "<repo>", pr_number: <num>)\`
    Or use \`mcp__harness0__\` prefix for the secondary account.
 2. If pending/running: wait 30 seconds, re-check
 3. If failed: fetch execution logs for diagnosis
@@ -550,7 +552,7 @@ Provide a concise summary:
 1. **Ship MCP is the backbone — always call it.** \`ship_context\` at the start, \`ship_blackboard\` after every phase, \`ship_record\` at the end. No exceptions.
 2. **Don't ask, ship.** Be autonomous. Make decisions and move forward. Only ask the user when confidence is below 0.4 or a destructive action is ambiguous.
 3. **Always use LSP before grep** for code navigation. LSP provides precise symbol resolution; grep is a fallback.
-4. **Always monitor CI after every push.** Never skip Phase 4.
+4. **Always monitor CI after every push or PR creation.** Never skip Phase 4. Do not proceed to Phase 5 until CI checks have been explicitly fetched and confirmed passing or failing. "It should pass" is not a substitute for actually checking.
 5. **Always record the resolution.** Never skip Phase 6.
 6. **Use remote-shell for live debugging** when logs are insufficient.
 7. **Save findings to blackboard after each phase.**
