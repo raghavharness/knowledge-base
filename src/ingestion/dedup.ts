@@ -36,7 +36,7 @@ export async function checkDuplicate(params: {
   if (ticketId) {
     const ticketRecords = await runQuery(
       `MATCH (t:Ticket { ticket_id: $ticketId })<-[:HAS_TICKET]-(r:Resolution)-[:SCOPED_TO]->(team:Team { id: $teamId })
-       RETURN r.id AS id, r.source AS source`,
+       RETURN r.id AS id, r.source AS source ORDER BY r.created_at DESC LIMIT 1`,
       { ticketId, teamId },
     );
 
@@ -57,7 +57,7 @@ export async function checkDuplicate(params: {
   if (prUrl) {
     const prRecords = await runQuery(
       `MATCH (p:PR { url: $prUrl })<-[:HAS_PR]-(r:Resolution)-[:SCOPED_TO]->(team:Team { id: $teamId })
-       RETURN r.id AS id, r.source AS source`,
+       RETURN r.id AS id, r.source AS source ORDER BY r.created_at DESC LIMIT 1`,
       { prUrl, teamId },
     );
 
