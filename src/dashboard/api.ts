@@ -215,10 +215,10 @@ router.get("/resolutions", async (req, res) => {
                r.created_at AS created_at, r.confidence AS confidence,
                e.signature AS error, tk.ticket_id AS ticket_id,
                COALESCE(tk.summary, r.summary) AS summary, tk.type AS ticket_type,
-               tk.priority AS ticket_priority, tk.assignee AS assignee,
+               tk.priority AS ticket_priority, COALESCE(tk.assignee, p.author) AS assignee,
                f.approach AS fix,
                rc.description AS root_cause, p.url AS pr_url,
-               p.title AS pr_title, p.repo AS pr_repo,
+               COALESCE(p.title, r.summary) AS pr_title, p.repo AS pr_repo,
                p.author AS pr_author, p.merged_at AS pr_merged_at
         ORDER BY ${sortField} ${sortOrder}
         SKIP $skip LIMIT $limit
@@ -309,7 +309,7 @@ router.get("/resolutions/:id", async (req, res) => {
              r.source AS source,
              t.id AS team_id, t.name AS team_name,
              e.signature AS error_signature,
-             tk.ticket_id AS ticket_id, tk.summary AS ticket_summary,
+             tk.ticket_id AS ticket_id, COALESCE(tk.summary, r.summary) AS ticket_summary,
              tk.status AS ticket_status, tk.resolution AS ticket_resolution,
              tk.type AS ticket_type, tk.priority AS ticket_priority,
              tk.assignee AS ticket_assignee, tk.reporter AS ticket_reporter,
@@ -373,7 +373,7 @@ router.get("/resolutions/:id", async (req, res) => {
         resolution: str(r.get("ticket_resolution")),
         type: str(r.get("ticket_type")),
         priority: str(r.get("ticket_priority")),
-        assignee: str(r.get("ticket_assignee")),
+        assignee: str(r.get("ticket_assignee")) ?? prs.find(p => p.author)?.author ?? null,
         reporter: str(r.get("ticket_reporter")),
         created_at: str(r.get("ticket_created_at")),
         resolved_at: str(r.get("ticket_resolved_at")),

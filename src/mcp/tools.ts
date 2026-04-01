@@ -171,6 +171,8 @@ export function registerTools(server: McpServer) {
       ticket_summary: z.string().optional().describe("JIRA ticket title/summary (e.g. 'Fix null pointer in payment flow')"),
       ticket_assignee: z.string().optional().describe("JIRA ticket assignee name"),
       pr_url: z.string().optional().describe("Pull request URL"),
+      pr_title: z.string().optional().describe("Pull request title"),
+      pr_author: z.string().optional().describe("Pull request author / creator"),
       pr_repo: z.string().optional().describe("Repository name or URL for the PR"),
       root_cause: z.string().describe("Root cause or explanation (for knowledge gaps: what the user needed to understand)"),
       investigation_path: z

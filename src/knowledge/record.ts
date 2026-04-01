@@ -24,6 +24,8 @@ export interface RecordInput {
   ticket_summary?: string;
   ticket_assignee?: string;
   pr_url?: string;
+  pr_title?: string;
+  pr_author?: string;
   pr_repo?: string;
   root_cause: string;
   investigation_path: string[];
@@ -180,6 +182,8 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
       `
       MERGE (pr:PR {url: $prUrl})
       ON CREATE SET pr.number = toInteger($prNumber), pr.repo = $prRepo
+      SET pr.title = CASE WHEN $prTitle IS NOT NULL THEN $prTitle ELSE pr.title END,
+          pr.author = CASE WHEN $prAuthor IS NOT NULL THEN $prAuthor ELSE pr.author END
       WITH pr
       MATCH (res:Resolution {id: $resolutionId})
       CREATE (res)-[:HAS_PR]->(pr)
@@ -195,6 +199,8 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
         prUrl: input.pr_url,
         prNumber: extractPrNumber(input.pr_url),
         prRepo: input.pr_repo ?? extractRepoFromUrl(input.pr_url),
+        prTitle: input.pr_title ?? null,
+        prAuthor: input.pr_author ?? null,
         repoUrl: extractRepoUrl(input.pr_url),
         resolutionId,
       }
