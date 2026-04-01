@@ -72,10 +72,14 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
   } else if (input.ticket_id) {
     // Fall back to ticket_id dedup within the same team so that resumed/compacted
     // sessions don't create duplicate records for the same JIRA ticket.
+    // Time-bounded to 24 hours: context compaction always happens within the same
+    // working session. A new session on the same ticket the next day is genuinely
+    // new work and should create a fresh record.
     const existing = await runQuery(
       `MATCH (r:Resolution)-[:SCOPED_TO]->(t:Team {id: $teamId})
        MATCH (r)-[:HAS_TICKET]->(tk:Ticket {ticket_id: $ticketId})
        WHERE r.source = 'agent'
+         AND r.created_at >= datetime() - duration('PT24H')
        RETURN r.id AS id ORDER BY r.created_at DESC LIMIT 1`,
       { teamId: input.teamId, ticketId: input.ticket_id },
     );
