@@ -124,15 +124,19 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
     : input.fix_approach;
 
   if (isUpdate) {
-    // Delete old Error/RootCause/Fix nodes so they can be recreated fresh
+    // Delete old RootCause/Fix nodes (private, safe to delete) and detach relationships.
+    // Error nodes are shared across resolutions (MERGEd on signature) — only delete
+    // the relationship, never the node itself.
     await runWrite(
       `MATCH (res:Resolution {id: $resolutionId})
-       OPTIONAL MATCH (res)-[re:HAS_ERROR]->(e:Error)
+       OPTIONAL MATCH (res)-[re:HAS_ERROR]->(:Error)
        OPTIONAL MATCH (res)-[rrc:HAS_ROOT_CAUSE]->(rc:RootCause)
        OPTIONAL MATCH (res)-[rf:HAS_FIX]->(f:Fix)
        OPTIONAL MATCH (res)-[rcf:CHANGED_FILE]->()
        OPTIONAL MATCH (res)-[ram:AFFECTS_MODULE]->()
-       DELETE re, e, rrc, rc, rf, f, rcf, ram`,
+       DELETE re, rrc, rcf, ram
+       FOREACH (_ IN CASE WHEN rc IS NOT NULL THEN [1] ELSE [] END | DETACH DELETE rc)
+       FOREACH (_ IN CASE WHEN f IS NOT NULL THEN [1] ELSE [] END | DETACH DELETE f)`,
       { resolutionId },
     );
 
