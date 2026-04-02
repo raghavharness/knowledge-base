@@ -53,7 +53,32 @@ export function registerPrompts(server: McpServer) {
     }
   );
 
-  // ─── Prompt 3: ship_ingest_jira ─────────────────────────────────────
+  // ─── Prompt 3: ship_save ────────────────────────────────────────────
+  server.prompt(
+    "ship_save",
+    "Manually record a resolution into the Ship knowledge graph. Provide a JIRA ticket ID and/or PR URL — the agent fetches full details from JIRA and GitHub/Harness and calls ship_record. Use this after completing work to capture knowledge, or to backfill a resolution that wasn't recorded automatically.",
+    {
+      ticket_id: z.string().optional().describe("JIRA ticket ID (e.g. CI-21831). Preferred — used as dedup key."),
+      pr_url: z.string().optional().describe("Pull request URL (GitHub or Harness). If provided alongside ticket_id, full PR details are fetched."),
+      notes: z.string().optional().describe("Any extra context: what was investigated, root cause found, fix applied. Freeform — the agent will incorporate this into the record."),
+      token: z.string().optional().describe("JWT from ship_register. If not provided, read from ~/.ship/token"),
+    },
+    async ({ ticket_id, pr_url, notes, token }) => {
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: buildSavePrompt(token, ticket_id, pr_url, notes),
+            },
+          },
+        ],
+      };
+    }
+  );
+
+  // ─── Prompt 4: ship_ingest_jira ─────────────────────────────────────
   server.prompt(
     "ship_ingest_jira",
     "Ingest the last N merged PRs (default 100) from specific repos (or all team repos) into the Ship knowledge graph. Pass repos as full git URLs or repo paths.",
@@ -607,6 +632,110 @@ Provide a concise summary:
 11. **Leverage all available tools.** You may have access to tools beyond Ship MCP (Atlassian, GitHub, Harness, remote-shell, Chrome DevTools, etc.). Use whatever tools are available in your environment to get the job done efficiently.
 
 Now proceed. Start with Phase 0: Bootstrap.`;
+}
+
+// ---------------------------------------------------------------------------
+// Prompt 3: ship_save — Manual Resolution Record
+// ---------------------------------------------------------------------------
+function buildSavePrompt(token?: string, ticketId?: string, prUrl?: string, notes?: string): string {
+  const tokenRef = token ?? '<token_from_~/.ship/token>';
+  const tokenInstruction = token
+    ? `Use this token for all Ship MCP calls: \`${token}\``
+    : `**Read your Ship token from \`~/.ship/token\`.**`;
+
+  const ticketLine = ticketId ? `**JIRA Ticket:** \`${ticketId}\`` : '**JIRA Ticket:** not provided — discover from context below';
+  const prLine = prUrl ? `**PR URL:** \`${prUrl}\`` : '**PR URL:** not provided — discover from context below';
+  const notesLine = notes ? `**User notes:** ${notes}` : '';
+
+  return `You are recording a resolution into the Ship knowledge graph on behalf of the user.
+
+**Authentication:** ${tokenInstruction}
+
+## Inputs provided
+
+${ticketLine}
+${prLine}
+${notesLine}
+
+---
+
+## Your job
+
+Gather the richest possible details, then call \`mcp__ship__ship_record\` once with everything you find.
+
+### Step 1 — Resolve ticket and PR
+
+${ticketId ? `
+Fetch the JIRA ticket:
+\`\`\`
+mcp__atlassian__getJiraIssue(issueIdOrKey: "${ticketId}", expand: "renderedFields,changelog,names")
+\`\`\`
+Extract: summary, status, type, priority, assignee, reporter, description, resolution, labels, components, comments.
+` : `
+No ticket was provided. Check:
+1. Does the user's notes mention a ticket ID like \`CI-XXXXX\`? Use it.
+2. **Do NOT infer a ticket from the git branch name.** If no ticket is mentioned in the notes or input, ask the user for a ticket ID before proceeding. Do not create a new ticket — this prompt is for recording existing work.
+`}
+
+${prUrl ? `
+Fetch the PR:
+- GitHub: \`mcp__github__pull_request_read\` — extract title, author, reviewers, body, files changed, additions, deletions, review decision, merged_at.
+- Harness: \`mcp__harness__harness_get\` or \`mcp__harness0__harness_get\` — same fields.
+` : `
+No PR URL was provided. Check:
+1. Run \`git log --oneline -5\` to find recent commits referencing the ticket.
+2. Run \`gh pr list --search "${ticketId ?? '<ticket_id>'}" --state all\` to find a related PR.
+3. If a PR is found, fetch its full details. If not, proceed without PR fields.
+`}
+
+### Step 2 — Determine root cause, fix, and category
+
+Use the ticket description, PR body, and user notes to extract:
+- **error_signature**: the specific error message or symptom (e.g. "googleapi: Error 400: Invalid value for field resource.scheduling.onHostMaintenance: MIGRATE")
+- **root_cause**: what caused the issue — be concise and specific
+- **fix_approach**: what was changed and why
+- **category**: \`bugfix\` / \`feature\` / \`refactor\` / \`config_change\`
+- **files_changed**: from the PR diff or \`git diff HEAD~1 --name-only\`
+- **investigation_path**: reconstruct from PR description, comments, and user notes — what steps were taken to find and fix the issue
+
+If the user provided notes, treat them as authoritative context for root_cause and fix_approach.
+
+### Step 3 — Call ship_record
+
+\`\`\`
+mcp__ship__ship_record(
+  token: "${tokenRef}",
+  resolution_type: "<code_fix|config_change|knowledge_gap|expected_behavior|documentation|environment>",
+  error_signature: "<specific error or symptom>",
+  root_cause: "<what caused it>",
+  fix_approach: "<what was done>",
+  investigation_path: ["<step 1>", "<step 2>", ...],
+  effective_step: "<the step that identified root cause>",
+  files_changed: [{"path": "<path>", "summary": "<what changed>"}],
+  ticket_id: "<JIRA ticket ID — THIS IS THE DEDUP KEY>",
+  ticket_summary: "<ticket title>",
+  ticket_assignee: "<assignee name>",
+  pr_url: "<PR URL>",
+  pr_title: "<PR title>",
+  pr_author: "<PR author>",
+  pr_repo: "<owner/repo>",
+  ci_attempts: 0,
+  time_to_root_cause_minutes: <int or 0 if unknown>,
+  knowledge_used: []
+)
+\`\`\`
+
+**Key rules:**
+- \`ticket_id\` is the dedup key — the server will merge into an existing resolution for this ticket if one exists, appending your findings to the history.
+- Do NOT infer \`ticket_id\` from the git branch name — only use what was provided or confirmed above.
+- If \`ticket_id\` is unavailable after the steps above, ask the user before calling \`ship_record\`.
+
+### Step 4 — Confirm to user
+
+After \`ship_record\` succeeds, reply with a one-line summary:
+> ✓ Recorded: \`<ticket_id>\` — <one-line root cause> → <one-line fix> ([PR #<number>](<pr_url>))
+
+Now proceed. Start with Step 1.`;
 }
 
 // ---------------------------------------------------------------------------
