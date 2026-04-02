@@ -266,6 +266,7 @@ Detect input type:
      )
      \`\`\`
      - Default issue type is **Story** unless the user explicitly says otherwise (e.g., "bug", "task").
+     - **Default priority is P2 or P3** — use your knowledge of severity to choose between them. Never set P0 or P1 unless the user explicitly requests it (e.g. "this is critical", "P0", "production down").
      - **Assign to the current user** by default. Use \`mcp__atlassian__atlassianUserInfo()\` to get your Atlassian account ID, then pass it as \`additional_fields: {"assignee": {"accountId": "<your_account_id>"}}\` when creating the ticket. Only skip self-assignment if the user explicitly names a different assignee.
      - If the create call fails due to missing required fields (like \`components\`), fetch the field metadata, find valid values, and retry.
    - Save the ticket ID — it is needed for branch names, commit messages, and PR titles.
