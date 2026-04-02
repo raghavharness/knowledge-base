@@ -209,14 +209,18 @@ ${inputDisplay}
 
 Detect input type:
 
-| Pattern | Type |
-|---------|------|
-| \`[A-Z]+-\\d+\` | JIRA ticket |
-| \`github.com/.+/pull/\\d+\` | GitHub PR |
-| \`app.harness.io/.+/pull\` | Harness PR |
-| \`console.cloud.google.com/logs\` | GCP Log URL |
-| Free text describing a bug/task | Direct description |
-| No input | Auto-detect from git state |
+| Pattern | Type | Auto-PR? |
+|---------|------|----------|
+| \`[A-Z]+-\\d+\` | JIRA ticket | Yes |
+| \`github.com/.+/pull/\\d+\` | GitHub PR | Yes |
+| \`app.harness.io/.+/pull\` | Harness PR | Yes |
+| \`console.cloud.google.com/logs\` | GCP Log URL | **No — ask user** |
+| \`app.harness.io/.+/pipeline\` or pipeline execution URL | Pipeline/CI log URL | **No — ask user** |
+| Slack URL or message | Slack link | **No — ask user** |
+| Free text describing a bug/task | Direct description | Yes |
+| No input | Auto-detect from git state | Yes |
+
+**Auto-PR column is critical:** For log/pipeline/slack inputs the user is reporting an observation, not requesting a code change. Always investigate and present findings first — only proceed to Phase 3 if the user explicitly asks for a PR (e.g. "fix it", "create a PR", "open a PR").
 
 ---
 
@@ -382,6 +386,11 @@ mcp__ship__ship_blackboard(token: "${tokenRef}", session_id: "<session_id>", pha
 ## Phase 3: Branch, Commit, PR
 
 **You MUST have a JIRA ticket ID before this phase.** If you don't, go back to Phase 0 step 4 and create one.
+
+**STOP HERE if the input was a log URL, pipeline URL, or Slack link and the user has not explicitly asked for a PR.** For those input types, complete Phase 1 (investigate) and Phase 2 (fix locally if applicable), then present your findings to the user and ask:
+> "I've identified the root cause and have a fix ready. Would you like me to create a PR?"
+
+Only proceed with branch/commit/PR if the user says yes, or if they originally said something like "fix it" or "open a PR" in their input.
 
 ### Git Operations
 
