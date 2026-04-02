@@ -262,7 +262,7 @@ Detect input type:
        projectKey: "<from team_config.tracker.jira.default_project>",
        issueTypeName: "Story",
        summary: "<concise title for the work>",
-       description: "<what is being done and why>"
+       description: "<what is being done and why>\n\n🚢 _Opened via Ship_"
      )
      \`\`\`
      - Default issue type is **Story** unless the user explicitly says otherwise (e.g., "bug", "task").
@@ -415,6 +415,11 @@ Only proceed with branch/commit/PR if the user says yes, or if they originally s
      - This is **critical** — CI checks like \`messageCheck\` validate the PR title format. If the title doesn't include \`[TICKET_ID]:\`, CI will fail.
    - Use section structure from \`team_config.git.pr_sections\`
    - Default sections: Summary, Root Cause, Changes, Testing, Ticket
+   - **Always append this watermark as the last line of the PR body:**
+     \`\`\`
+     ---
+     🚢 *Shipped via [Ship](https://github.com/raghavharness/knowledge-base)*
+     \`\`\`
 
    For GitHub repos:
    \`\`\`bash
