@@ -55,37 +55,39 @@ export async function recordResolution(input: RecordInput): Promise<RecordResult
   //    an agent resuming after compaction won't remember session_id but
   //    will still pass the same ticket_id, so we merge into the existing record
   // 3. Neither — create new
-  let resolutionId: string;
+  let resolutionId: string | undefined;
   let isUpdate = false;
 
+  // Priority 1: session_id — exact session match
   if (input.session_id) {
-    const existing = await runQuery(
+    const bySession = await runQuery(
       `MATCH (r:Resolution {session_id: $sessionId}) RETURN r.id AS id LIMIT 1`,
       { sessionId: input.session_id },
     );
-    if (existing.length > 0) {
-      resolutionId = existing[0].get("id") as string;
+    if (bySession.length > 0) {
+      resolutionId = bySession[0].get("id") as string;
       isUpdate = true;
-    } else {
-      resolutionId = uuid();
     }
-  } else if (input.ticket_id) {
-    // Deduplicate by ticket_id within the same team — one resolution per ticket, always.
-    // If any session (including a brand new one) records work against the same ticket,
-    // we merge into the existing resolution to avoid duplicates and preserve full history.
-    const existing = await runQuery(
+  }
+
+  // Priority 2: ticket_id — one resolution per ticket per team, always.
+  // Runs when session_id is absent OR when session_id was given but found no match
+  // (e.g. new session working on the same ticket, or after context compaction).
+  if (!isUpdate && input.ticket_id) {
+    const byTicket = await runQuery(
       `MATCH (r:Resolution)-[:SCOPED_TO]->(t:Team {id: $teamId})
        MATCH (r)-[:HAS_TICKET]->(tk:Ticket {ticket_id: $ticketId})
        RETURN r.id AS id ORDER BY r.created_at DESC LIMIT 1`,
       { teamId: input.teamId, ticketId: input.ticket_id },
     );
-    if (existing.length > 0) {
-      resolutionId = existing[0].get("id") as string;
+    if (byTicket.length > 0) {
+      resolutionId = byTicket[0].get("id") as string;
       isUpdate = true;
-    } else {
-      resolutionId = uuid();
     }
-  } else {
+  }
+
+  // Priority 3: create new
+  if (!resolutionId) {
     resolutionId = uuid();
   }
 
