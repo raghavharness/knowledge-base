@@ -224,8 +224,9 @@ Detect input type:
 
 4. **Ensure a JIRA ticket exists (MANDATORY before any code changes):**
    - If the input IS a JIRA ticket ID: use it.
-   - If the input is a PR, log URL, or description that references a JIRA ticket: extract the ticket ID.
-   - **If NO JIRA ticket is associated with this work:** Create one BEFORE making any code changes:
+   - If the input is a PR, log URL, or description that **explicitly references** a JIRA ticket: extract the ticket ID.
+   - **Do NOT infer ticket_id from the git branch name.** The branch may be named after a previous ticket for unrelated reasons. Only use a ticket ID that comes from the user's input or from text content (PR title, commit message, description). If the user did not provide a ticket ID in their message, treat this as no ticket provided.
+   - **If NO JIRA ticket is provided in the input:** Create a NEW ticket BEFORE making any code changes:
      \`\`\`
      mcp__atlassian__createJiraIssue(
        cloudId: "<from team_config.tracker.jira.cloud_id>",
@@ -529,6 +530,8 @@ mcp__ship__ship_blackboard(token: "${tokenRef}", session_id: "<session_id>", pha
 **ALWAYS do this. Never skip this phase. This is how Ship learns.**
 
 **CRITICAL — \`ticket_id\` MUST be a valid JIRA ticket ID (e.g., CI-21831).** Do NOT record a resolution without a JIRA ticket. If no ticket exists yet, create one first (see Phase 0 step 4). Never use UUIDs, descriptions, or placeholder strings as the ticket_id.
+
+**CRITICAL — do NOT infer \`ticket_id\` from the git branch name.** Use only the ticket ID that was provided in the user's input or explicitly created/confirmed in Phase 0. The branch name is not authoritative — the user may be on an old branch working on a new problem.
 
 Even if:
 - The investigation was simple or obvious — **record it** (but with a JIRA ticket).
