@@ -36,7 +36,7 @@ export async function checkDuplicate(params: {
   if (ticketId) {
     const ticketRecords = await runQuery(
       `MATCH (t:Ticket { ticket_id: $ticketId })<-[:HAS_TICKET]-(r:Resolution)-[:SCOPED_TO]->(team:Team { id: $teamId })
-       RETURN r.id AS id, r.source AS source ORDER BY r.created_at DESC LIMIT 1`,
+       RETURN r.id AS id, r.source AS source ORDER BY toString(r.created_at) DESC LIMIT 1`,
       { ticketId, teamId },
     );
 
