@@ -126,12 +126,13 @@ async function upsertResolutionGraph(
     );
 
     // Delete old Error/RootCause/Fix nodes (they'll be recreated below)
+    // Use DETACH DELETE so nodes with extra relationships (e.g. from patterns) are cleaned up
     await tx.run(
       `MATCH (r:Resolution { id: $resId })
-       OPTIONAL MATCH (r)-[re:HAS_ERROR]->(e:Error)
-       OPTIONAL MATCH (r)-[rrc:HAS_ROOT_CAUSE]->(rc:RootCause)
-       OPTIONAL MATCH (r)-[rf:HAS_FIX]->(f:Fix)
-       DELETE re, e, rrc, rc, rf, f`,
+       OPTIONAL MATCH (r)-[:HAS_ERROR]->(e:Error)
+       OPTIONAL MATCH (r)-[:HAS_ROOT_CAUSE]->(rc:RootCause)
+       OPTIONAL MATCH (r)-[:HAS_FIX]->(f:Fix)
+       DETACH DELETE e, rc, f`,
       { resId: resolutionId },
     );
 
